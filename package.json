@@ -97,6 +97,17 @@
 		"ws": "^8.18.0"
 	},
 	"contributes": {
+		"colors": [
+			{
+				"id": "renpyWarp.dialogueBackgroundDecoration",
+				"description": "Background of the dialogue Ren'Py is at",
+				"defaults": {
+					"dark": "editor.inactiveSelectionBackground",
+					"light": "editor.inactiveSelectionBackground",
+					"highContrast": "editor.inactiveSelectionBackground"
+				}
+			}
+		],
 		"icons": {
 			"warp-renpy": {
 				"description": "Ren'Py Icon",
@@ -361,17 +372,19 @@
 						"Try and keep both in sync.\n\n**Note**: Because of how warping works, this can be a bit janky."
 					]
 				},
-				"renpyWarp.followCursorMark": {
+				"renpyWarp.followCursorBehavior": {
 					"type": "string",
-					"order": 2,
-					"markdownDescription": "When the current line changes, how should the cursor behave?",
-					"default": "Select dialogue",
+					"order": 2.1,
+					"markdownDescription": "While in _Follow Cursor_ mode, where to put your cursor when Ren'Py moves.",
+					"default": "Just reveal",
 					"enum": [
+						"Just reveal",
 						"Select dialogue",
 						"Cursor at dialogue end",
 						"Cursor at line end"
 					],
 					"markdownEnumDescriptions": [
+						"Reveal the line of dialogue being shown, leaving your cursor alone.",
 						"Select the dialogue being said.",
 						"Place the cursor where the dialogue ends.",
 						"Place the cursor at the end of the line."
@@ -380,7 +393,7 @@
 				"renpyWarp.followCursorOnLaunch": {
 					"type": "boolean",
 					"default": false,
-					"order": 2,
+					"order": 2.2,
 					"markdownDescription": "Automatically enter _Follow Cursor_ mode when launching Ren'Py. This is ignored if `#renpyWarp.renpyExtensionsEnabled#` is set to _Disabled_."
 				},
 				"renpyWarp.setAutoReloadOnSave": {
@@ -395,11 +408,17 @@
 					"order": 3,
 					"markdownDescription": "Automatically start the socket server when in a Ren'Py project"
 				},
-				"renpyWarp.showEditorDecorations": {
+				"renpyWarp.showDialogueDecorations": {
 					"type": "boolean",
 					"default": true,
 					"order": 3,
-					"markdownDescription": "Show a decoration where the cursor is in the Ren'Py game"
+					"markdownDescription": "Highlight the dialogue Ren'Py is at.\n\nStyled by `renpyWarp.dialogueBackgroundDecoration`."
+				},
+				"renpyWarp.showGutterDecorations": {
+					"type": "boolean",
+					"default": true,
+					"order": 3,
+					"markdownDescription": "Show a gutter icon on the line Ren'Py is on"
 				},
 				"renpyWarp.exclude": {
 					"type": "array",

@@ -5,10 +5,13 @@ import { get_logger } from "./log"
 import path from "upath"
 import { find_project_root } from "./sh"
 import { StatusBar } from "./status_bar"
-import { DialogueRange, find_dialogue_range, SaidRange } from "./lex"
+import { find_dialogue_range, SaidRange } from "./lex"
+import { cursor_selection, dialogue_range } from "./mark"
 
 const logger = get_logger()
 const last_warps = new Map<number, string>()
+
+let own_mark: { uri: string; selection: vscode.Selection } | undefined
 
 interface SyncEditorWithRenpyOptions {
 	/** absolute path to the file */
@@ -25,33 +28,6 @@ interface SyncEditorWithRenpyOptions {
 	force?: boolean
 	/** pid of the renpy process, used for deduplication */
 	pid?: number
-}
-
-function dialogue_selection(
-	document: vscode.TextDocument,
-	line: number,
-	dialogue: DialogueRange | undefined
-): vscode.Selection {
-	const start = dialogue
-		? new vscode.Position(dialogue.start.line, dialogue.start.column)
-		: document.lineAt(line).range.end
-	const end = dialogue
-		? new vscode.Position(dialogue.end.line, dialogue.end.column)
-		: start
-
-	switch (get_config("followCursorMark") as string) {
-		case "Cursor at dialogue end":
-			return new vscode.Selection(end, end)
-
-		case "Cursor at line end": {
-			const end_of_line = document.lineAt(end.line).range.end
-
-			return new vscode.Selection(end_of_line, end_of_line)
-		}
-
-		default:
-			return new vscode.Selection(start, end)
-	}
 }
 
 export async function sync_editor_with_renpy({
@@ -83,11 +59,30 @@ export async function sync_editor_with_renpy({
 
 	// ren'py reports monologue blocks on the line they open on, so the dialogue
 	// can be further down the file than the line it came with
-	const selection = dialogue_selection(editor.document, line, dialogue)
+	const range = dialogue
+		? dialogue_range(dialogue)
+		: editor.document.lineAt(Math.min(line, editor.document.lineCount - 1))
+				.range
 
 	editor.revealRange(
-		selection,
+		range,
 		vscode.TextEditorRevealType.InCenterIfOutsideViewport
+	)
+
+	const selection = cursor_selection(editor.document, line, dialogue)
+
+	if (selection) {
+		editor.selection = selection
+		own_mark = { uri: editor.document.uri.toString(), selection }
+	}
+}
+
+function is_own_mark(event: vscode.TextEditorSelectionChangeEvent): boolean {
+	return (
+		own_mark !== undefined &&
+		own_mark.uri === event.textEditor.document.uri.toString() &&
+		event.selections.length === 1 &&
+		event.selections[0].isEqual(own_mark.selection)
 	)
 }
 
@@ -148,6 +143,7 @@ export class FollowCursorService {
 
 		process.once("exit", () => {
 			last_warps.delete(process.pid)
+			own_mark = undefined
 		})
 
 		this.text_editor_handle?.dispose()
@@ -157,7 +153,8 @@ export class FollowCursorService {
 					["Visual Studio Code updates Ren'Py", "Update both"].includes(
 						get_config("followCursorMode") as string
 					) &&
-					event.kind !== vscode.TextEditorSelectionChangeKind.Command
+					event.kind !== vscode.TextEditorSelectionChangeKind.Command &&
+					!is_own_mark(event)
 				) {
 					await warp_renpy_to_cursor(process, this.status_bar)
 				}
@@ -179,6 +176,8 @@ export class FollowCursorService {
 
 	off() {
 		this.enabled = false
+		own_mark = undefined
+
 		if (!this.active_process) return
 
 		this.active_process = undefined

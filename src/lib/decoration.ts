@@ -10,6 +10,7 @@ import {
 import { realpath } from "node:fs/promises"
 import { get_logger } from "./log"
 import { find_dialogue_range } from "./lex"
+import { dialogue_range } from "./mark"
 
 const logger = get_logger()
 
@@ -24,14 +25,17 @@ async function safe_realpath(p: string): Promise<string | void> {
 export class DecorationService {
 	private state = new Map<number, CurrentLineSocketMessage>()
 	private subscriptions: vscode.Disposable[]
-	private enabled: boolean
-	private decoration: vscode.TextEditorDecorationType
+	private gutter: boolean
+	private dialogue: boolean
+	private arrow: vscode.TextEditorDecorationType
+	private highlight: vscode.TextEditorDecorationType
 	private update_timeout: ReturnType<typeof setTimeout> | undefined
 
 	constructor({ context }: { context: vscode.ExtensionContext }) {
-		this.enabled = get_config("showEditorDecorations") as boolean
+		this.gutter = get_config("showGutterDecorations") as boolean
+		this.dialogue = get_config("showDialogueDecorations") as boolean
 
-		this.decoration = vscode.window.createTextEditorDecorationType({
+		this.arrow = vscode.window.createTextEditorDecorationType({
 			gutterIconPath: context.asAbsolutePath("dist/assets/arrow-right.svg"),
 			dark: {
 				gutterIconPath: context.asAbsolutePath(
@@ -42,14 +46,28 @@ export class DecorationService {
 			overviewRulerLane: vscode.OverviewRulerLane.Center
 		})
 
+		// the highlight stands in for a selection without touching the real one,
+		// so edits around it must not stretch it
+		this.highlight = vscode.window.createTextEditorDecorationType({
+			backgroundColor: new vscode.ThemeColor(
+				"renpyWarp.dialogueBackgroundDecoration"
+			),
+			rangeBehavior: vscode.DecorationRangeBehavior.ClosedClosed
+		})
+
 		this.subscriptions = [
-			this.decoration,
+			this.arrow,
+			this.highlight,
 			vscode.window.onDidChangeActiveTextEditor(() => {
 				this.schedule_update()
 			}),
 			vscode.workspace.onDidChangeConfiguration((e) => {
-				if (e.affectsConfiguration("renpyWarp.showEditorDecorations")) {
-					this.enabled = get_config("showEditorDecorations") as boolean
+				if (e.affectsConfiguration("renpyWarp.showGutterDecorations")) {
+					this.gutter = get_config("showGutterDecorations") as boolean
+					this.schedule_update()
+				}
+				if (e.affectsConfiguration("renpyWarp.showDialogueDecorations")) {
+					this.dialogue = get_config("showDialogueDecorations") as boolean
 					this.schedule_update()
 				}
 			}),
@@ -70,20 +88,22 @@ export class DecorationService {
 
 	private async update_decorations() {
 		for (const editor of vscode.window.visibleTextEditors) {
-			if (!this.enabled) {
-				editor.setDecorations(this.decoration, [])
-				continue
-			}
-
 			if (editor.document.uri.scheme !== "file") continue
 
-			const editor_path = await safe_realpath(editor.document.uri.fsPath)
-			if (!editor_path) continue
+			const arrows: vscode.Range[] = []
+			const highlights: vscode.Range[] = []
 
-			const ranges: vscode.Range[] = []
+			// finding the dialogue means lexing the script, so only look when
+			// there is something to draw with it
+			const editor_path =
+				this.gutter || this.dialogue
+					? await safe_realpath(editor.document.uri.fsPath)
+					: undefined
 
-			for (const [, state] of this.state) {
-				if (path.relative(editor_path, state.path) === "") {
+			if (editor_path) {
+				for (const [, state] of this.state) {
+					if (path.relative(editor_path, state.path) !== "") continue
+
 					const line = state.line - 1
 					const dialogue =
 						state.what === undefined
@@ -94,13 +114,21 @@ export class DecorationService {
 									state.what,
 									said_range(state)
 								)
-					const at = dialogue?.start.line ?? line
 
-					ranges.push(new vscode.Range(at, 0, at, 0))
+					if (this.gutter) {
+						const at = dialogue?.start.line ?? line
+
+						arrows.push(new vscode.Range(at, 0, at, 0))
+					}
+
+					if (this.dialogue && dialogue) {
+						highlights.push(dialogue_range(dialogue))
+					}
 				}
 			}
 
-			editor.setDecorations(this.decoration, ranges)
+			editor.setDecorations(this.arrow, arrows)
+			editor.setDecorations(this.highlight, highlights)
 		}
 	}
 

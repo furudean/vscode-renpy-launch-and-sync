@@ -4,11 +4,17 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- Rewrite of cursor tracking. Now places the marker/cursor on the current
-  dialogue section, instead of end of line
+- Rewrite of cursor tracking. Now places the a highlight on the current dialogue
+  section by default.
   - Supports monologue mode properly (i.e. `"""text"""`)
   - Follows `{w}` and `{p}` pauses inside a line of dialogue
-  - New setting `renpyWarp.followCursorMark` change the behavior of this
+  - New setting `renpyWarp.showDialogueDecorations` highlights the dialogue
+    Ren'Py is saying. On by default, and styled with the new
+    `renpyWarp.dialogueBackgroundDecoration` color
+  - `renpyWarp.followCursorBehavior` now decides where your cursor goes while
+    following
+- Rename `renpyWarp.showEditorDecorations` to `renpyWarp.showGutterDecorations`
+  to reflect what it actually does
 - Fix a crash when warping or following the cursor in a file that isn't inside a Ren'Py project
 - Fix a crash when linting a project with no SDK path set
 - Detect Visual Studio Code forks such as VSCodium and point Ren'Py at their CLI for the editor file
