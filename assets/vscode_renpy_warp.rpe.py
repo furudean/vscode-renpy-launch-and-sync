@@ -79,6 +79,84 @@ def script_dialogue():
     return what if isinstance(what, str) else None
 
 
+def say_segments_supported():
+    """
+    whether character callbacks report each `{w}` pause of a say statement.
+    ren'py 8.3 added the arguments describing them, and a game asking for older
+    behaviour with `config.version` turns them back off
+    """
+    return getattr(renpy.config, "character_callback_compat", True) is None
+
+
+RESYNC_WINDOW = 64
+RESYNC_ANCHOR = 8
+
+
+def resync(script_text, displayed, i, j):
+    """
+    how far to step through one text or the other for the two to line up again,
+    as a (script, displayed) pair, or None if they don't inside the window
+    """
+    script_anchor = script_text[i:i + RESYNC_ANCHOR]
+    displayed_anchor = displayed[j:j + RESYNC_ANCHOR]
+
+    for k in range(1, RESYNC_WINDOW):
+        # text the filter added
+        if displayed[j + k:j + k + RESYNC_ANCHOR] == script_anchor:
+            return 0, k
+
+        # text the filter took out
+        if script_text[i + k:i + k + RESYNC_ANCHOR] == displayed_anchor:
+            return k, 0
+
+    return None
+
+
+def dialogue_offset(script_text, displayed, end):
+    """
+    where `end`, an index into the text ren'py displays, falls in the text the
+    script writes. `config.say_menu_text_filter` and interpolation rewrite one
+    into the other, adding text tags and swapping characters as they go, so the
+    two are walked side by side rather than assumed equal
+    """
+    if script_text == displayed:
+        return end
+
+    # a translated line has nothing to line up with, so give up on it rather
+    # than walking the whole thing
+    budget = 1 + len(displayed) // 4
+
+    i = 0
+    j = 0
+
+    while j < end and i < len(script_text):
+        if script_text[i] == displayed[j]:
+            i += 1
+            j += 1
+            continue
+
+        # a text tag the filter added, a pause among them
+        if displayed[j] == "{" and "}" in displayed[j:]:
+            j = displayed.index("}", j) + 1
+            continue
+
+        step = resync(script_text, displayed, i, j)
+
+        if step is None:
+            # a character the filter swapped, such as a curly quote
+            budget -= 1
+
+            if budget == 0:
+                return None
+
+            step = (1, 1)
+
+        i += step[0]
+        j += step[1]
+
+    return i
+
+
 def py_exec(text):
     while renpy.exports.is_init_phase():
         logger.debug("in init phase, waiting...")
@@ -142,34 +220,61 @@ def socket_producer(websocket):
         if not interact:
             return
 
-        if event == "begin":
-            filename, line = renpy.exports.get_filename_line()
-            relative_filename = Path(filename).relative_to('game')
-            filename_abs = Path(renpy.config.gamedir, relative_filename)
+        segmented = say_segments_supported()
 
-            message = {
-                "type": "current_line",
-                "line": line,
-                "path": filename_abs.resolve().as_posix(),
-                "relative_path": relative_filename.resolve().as_posix(),
-            }
+        # `show` fires once per pause, the first right after `begin`. without
+        # segment reporting it says nothing `begin` doesn't already say
+        if event != ("show" if segmented else "begin"):
+            return
 
-            # the script text places the cursor on the dialogue. ren'py 8.3
-            # and later also pass the displayed text to character callbacks,
-            # which is used if the script can't be read
-            what = script_dialogue()
+        filename, line = renpy.exports.get_filename_line()
+        relative_filename = Path(filename).relative_to('game')
+        filename_abs = Path(renpy.config.gamedir, relative_filename)
 
-            if what is None:
-                what = kwargs.get("what")
+        message = {
+            "type": "current_line",
+            "line": line,
+            "path": filename_abs.resolve().as_posix(),
+            "relative_path": relative_filename.resolve().as_posix(),
+        }
 
-            if isinstance(what, str):
-                message["what"] = what
+        # the script text places the cursor on the dialogue. ren'py 8.3
+        # and later also pass the displayed text to character callbacks,
+        # which is used if the script can't be read
+        displayed = kwargs.get("what")
+        what = script_dialogue()
 
-            try:
-                send(message)
-            except ConnectionClosed:
-                # socket is closed, remove the callback
-                renpy.config.all_character_callbacks.remove(fn)
+        if what is None:
+            what = displayed
+
+        if isinstance(what, str):
+            message["what"] = what
+
+        start = kwargs.get("start")
+        end = kwargs.get("end")
+
+        # the stretch of dialogue ren'py is saying right now, which runs from
+        # one pause to the next. it is measured in the text ren'py displays, so
+        # both ends are walked back to the text the script holds
+        if (
+            segmented
+            and isinstance(what, str)
+            and isinstance(displayed, str)
+            and isinstance(start, int)
+            and isinstance(end, int)
+        ):
+            said_from = dialogue_offset(what, displayed, start)
+            said_to = dialogue_offset(what, displayed, end)
+
+            if said_from is not None and said_to is not None:
+                message["said_from"] = said_from
+                message["said_to"] = said_to
+
+        try:
+            send(message)
+        except ConnectionClosed:
+            # socket is closed, remove the callback
+            renpy.config.all_character_callbacks.remove(fn)
 
     renpy.config.all_character_callbacks.append(fn)
 

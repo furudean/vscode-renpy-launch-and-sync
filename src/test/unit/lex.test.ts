@@ -1,6 +1,22 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
-import { find_dialogue_position, type LineSource } from "../../lib/lex.ts"
+import {
+	find_dialogue_range,
+	type LineSource,
+	type SaidRange
+} from "../../lib/lex.ts"
+
+function read(script: string): { document: LineSource; lines: string[] } {
+	const lines = script.split("\n")
+
+	return {
+		lines,
+		document: {
+			lineCount: lines.length,
+			lineAt: (n) => ({ text: lines[n] })
+		}
+	}
+}
 
 /**
  * Runs a script through the resolver and marks where the cursor lands with a
@@ -9,21 +25,43 @@ import { find_dialogue_position, type LineSource } from "../../lib/lex.ts"
 function cursor(
 	script: string,
 	line: number,
-	what: string
+	what: string,
+	said?: SaidRange
 ): string | undefined {
-	const lines = script.split("\n")
-	const document: LineSource = {
-		lineCount: lines.length,
-		lineAt: (n) => ({ text: lines[n] })
-	}
+	const { document, lines } = read(script)
+	const range = find_dialogue_range(document, line, what, said)
 
-	const position = find_dialogue_position(document, line, what)
+	if (!range) return undefined
 
-	if (!position) return undefined
+	const text = lines[range.end.line]
 
-	const text = lines[position.line]
+	return text.slice(0, range.end.column) + "|" + text.slice(range.end.column)
+}
 
-	return text.slice(0, position.column) + "|" + text.slice(position.column)
+function selection(
+	script: string,
+	line: number,
+	what: string,
+	said?: SaidRange
+): string | undefined {
+	const { document, lines } = read(script)
+	const range = find_dialogue_range(document, line, what, said)
+
+	if (!range) return undefined
+
+	const marked = lines.slice(range.start.line, range.end.line + 1)
+	const last = marked.length - 1
+
+	marked[last] =
+		marked[last].slice(0, range.end.column) +
+		"]" +
+		marked[last].slice(range.end.column)
+	marked[0] =
+		marked[0].slice(0, range.start.column) +
+		"[" +
+		marked[0].slice(range.start.column)
+
+	return marked.join("\n")
 }
 
 describe("say statements", () => {
@@ -252,5 +290,112 @@ describe("monologue blocks", () => {
 		const unclosed = [`    """`, ...Array(2000).fill(`    filler`)].join("\n")
 
 		assert.equal(cursor(unclosed, 0, "nowhere to be found"), undefined)
+	})
+})
+
+describe("dialogue pauses", () => {
+	// at every pause, ren'py reports how much of the dialogue it has said,
+	// counted in the characters of the text the lexer read
+
+	test("selects the stretch of dialogue being said", () => {
+		const script = `    e "Hi{w} there.{w} bye."`
+		const what = `Hi{w} there.{w} bye.`
+
+		assert.equal(
+			selection(script, 0, what, { from: 0, to: what.indexOf("{w}") }),
+			`    e "[Hi{w}] there.{w} bye."`
+		)
+		assert.equal(
+			selection(script, 0, what, {
+				from: what.indexOf("{w}"),
+				to: what.lastIndexOf("{w}")
+			}),
+			`    e "Hi{w} [there.{w}] bye."`
+		)
+		assert.equal(
+			selection(script, 0, what, {
+				from: what.lastIndexOf("{w}"),
+				to: what.length
+			}),
+			`    e "Hi{w} there.{w} [bye.]"`
+		)
+	})
+
+	test("selects the whole dialogue when nothing pauses it", () => {
+		assert.equal(
+			selection(`    e "Hello, world!"`, 0, "Hello, world!"),
+			`    e "[Hello, world!]"`
+		)
+	})
+
+	test("lands where the script has no tag at all", () => {
+		// a `say_menu_text_filter` puts pauses of its own into the dialogue, so
+		// the position ren'py reports needn't sit on anything in particular
+		const script = `    e "It was August. The window rolled down."`
+		const what = `It was August. The window rolled down.`
+
+		assert.equal(
+			selection(script, 0, what, { from: 0, to: "It was August.".length }),
+			`    e "[It was August.] The window rolled down."`
+		)
+	})
+
+	test("counts the characters the lexer read, not the ones in the file", () => {
+		// `\"` is one character to ren'py and two in the file, `\{` is two to
+		// both, and a run of spaces is one
+		assert.equal(
+			cursor(
+				`    e "she said \\"no\\" then{w} left"`,
+				0,
+				`she said "no" then{w} left`,
+				{ from: 0, to: `she said "no" then`.length }
+			),
+			`    e "she said \\"no\\" then{w}| left"`
+		)
+		assert.equal(
+			cursor(`    e "50\\{50  chance{w} ok"`, 0, `50{{50 chance{w} ok`, {
+				from: 0,
+				to: `50{{50 chance`.length
+			}),
+			`    e "50\\{50  chance{w}| ok"`
+		)
+	})
+
+	test("falls back to the ends of the dialogue", () => {
+		// the script is shorter than the text ren'py said, so a filter added
+		// text of its own and the offsets can't be trusted
+		assert.equal(
+			selection(`    e "short"`, 0, "short", { from: 40, to: 80 }),
+			`    e "[short]"`
+		)
+	})
+
+	test("finds a pause inside a monologue block", () => {
+		const block = [
+			`    """`,
+			`    first line{w} keeps going`,
+			`    and ends here`,
+			`    """`
+		].join("\n")
+		const paragraph = `first line{w} keeps going and ends here`
+
+		assert.equal(
+			selection(block, 0, paragraph, {
+				from: 0,
+				to: paragraph.indexOf("{w}")
+			}),
+			`    [first line{w}] keeps going`
+		)
+		assert.equal(
+			cursor(block, 0, paragraph, {
+				from: 0,
+				to: `first line{w} keeps going and`.length
+			}),
+			`    and| ends here`
+		)
+		assert.equal(
+			selection(block, 0, paragraph),
+			[`    [first line{w} keeps going`, `    and ends here]`].join("\n")
+		)
 	})
 })

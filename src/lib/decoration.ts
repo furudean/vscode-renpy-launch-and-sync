@@ -2,10 +2,14 @@ import * as vscode from "vscode"
 import { AnyProcess } from "./process"
 import path from "upath"
 import { get_config } from "./config"
-import { AnySocketMessage, CurrentLineSocketMessage } from "./socket"
+import {
+	AnySocketMessage,
+	CurrentLineSocketMessage,
+	said_range
+} from "./socket"
 import { realpath } from "node:fs/promises"
 import { get_logger } from "./log"
-import { find_dialogue_position } from "./lex"
+import { find_dialogue_range } from "./lex"
 
 const logger = get_logger()
 
@@ -84,8 +88,13 @@ export class DecorationService {
 					const dialogue =
 						state.what === undefined
 							? undefined
-							: find_dialogue_position(editor.document, line, state.what)
-					const at = dialogue?.line ?? line
+							: find_dialogue_range(
+									editor.document,
+									line,
+									state.what,
+									said_range(state)
+								)
+					const at = dialogue?.start.line ?? line
 
 					ranges.push(new vscode.Range(at, 0, at, 0))
 				}

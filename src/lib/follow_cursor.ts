@@ -5,7 +5,7 @@ import { get_logger } from "./log"
 import path from "upath"
 import { find_project_root } from "./sh"
 import { StatusBar } from "./status_bar"
-import { find_dialogue_position } from "./lex"
+import { find_dialogue_range, SaidRange } from "./lex"
 
 const logger = get_logger()
 const last_warps = new Map<number, string>()
@@ -19,6 +19,8 @@ interface SyncEditorWithRenpyOptions {
 	line: number
 	/** dialogue ren'py is displaying, if it reported any */
 	what?: string
+	/** the part of the dialogue ren'py is saying, if it reported one */
+	said?: SaidRange
 	/** skip redundancy checks */
 	force?: boolean
 	/** pid of the renpy process, used for deduplication */
@@ -30,10 +32,11 @@ export async function sync_editor_with_renpy({
 	relative_path,
 	line,
 	what,
+	said,
 	force,
 	pid = 0
 }: SyncEditorWithRenpyOptions): Promise<void> {
-	const warp_spec = `${path}:${line + 1}:${what ?? ""}`
+	const warp_spec = `${path}:${line + 1}:${what ?? ""}:${said?.from}-${said?.to}`
 	if (!force && warp_spec === last_warps.get(pid)) return // no change
 	last_warps.set(pid, warp_spec)
 
@@ -45,30 +48,26 @@ export async function sync_editor_with_renpy({
 	const dialogue =
 		what === undefined
 			? undefined
-			: find_dialogue_position(editor.document, line, what)
+			: find_dialogue_range(editor.document, line, what, said)
 
 	if (what !== undefined && dialogue === undefined) {
-		logger.debug(`could not place cursor on dialogue ${JSON.stringify(what)}`)
+		logger.debug(`could not find the dialogue ${JSON.stringify(what)}`)
 	}
 
 	// ren'py reports monologue blocks on the line they open on, so the dialogue
 	// can be further down the file than the line it came with
-	const target_line = dialogue?.line ?? line
-	const pos = new vscode.Position(
-		target_line,
-		dialogue?.column ?? editor.document.lineAt(line).range.end.character
-	)
-	const selection = new vscode.Selection(pos, pos)
+	const end_of_line = editor.document.lineAt(line).range.end
+	const selection = dialogue
+		? new vscode.Selection(
+				new vscode.Position(dialogue.start.line, dialogue.start.column),
+				new vscode.Position(dialogue.end.line, dialogue.end.column)
+			)
+		: new vscode.Selection(end_of_line, end_of_line)
 
 	editor.revealRange(
 		selection,
 		vscode.TextEditorRevealType.InCenterIfOutsideViewport
 	)
-
-	// if the cursor is already on the correct line, don't munge it
-	if (editor.selection.start.line !== target_line) {
-		editor.selection = selection
-	}
 }
 
 export async function warp_renpy_to_cursor(
