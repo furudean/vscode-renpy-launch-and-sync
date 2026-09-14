@@ -6,7 +6,12 @@ import fs from "node:fs/promises"
 import { ProcessManager, ManagedProcess, AnyProcess } from "./process"
 import { get_config } from "./config"
 import { get_log_file, get_logger } from "./log"
-import { get_editor_path, get_executable, find_project_root } from "./sh"
+import {
+	get_editor_path,
+	get_executable,
+	find_project_root,
+	get_editor_cli_path
+} from "./sh"
 import { has_current_rpe, prompt_install_rpe } from "./rpe"
 import { StatusBar } from "./status_bar"
 import {
@@ -173,6 +178,7 @@ export async function launch_renpy({
 
 			const process_env: Record<string, string | undefined> = {
 				RENPY_SCREENSHOT_PATTERN: path.join(project_root, "screenshot%04d.png"),
+				RENPY_VSCODE: await get_editor_cli_path(),
 				...process.env,
 				...(get_config("processEnvironment") as object),
 				...extra_environment,
@@ -284,6 +290,7 @@ export async function launch_sdk({
 			},
 			async () => {
 				const process_env: Record<string, string | undefined> = {
+					RENPY_VSCODE: await get_editor_cli_path(),
 					...process.env,
 					...(get_config("processEnvironment") as object),
 					// see: https://www.renpy.org/doc/html/editor.html

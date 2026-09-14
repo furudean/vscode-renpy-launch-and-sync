@@ -5,6 +5,7 @@ import { get_config } from "./config"
 import os from "node:os"
 import child_process from "node:child_process"
 import { path_exists, resolve_path } from "./path"
+import fs from "node:fs/promises"
 import find_process from "find-process"
 import p_find from "p-locate"
 import { path_is_sdk } from "./sdk"
@@ -136,6 +137,46 @@ export async function get_editor_path(
 	}
 
 	return editor_path
+}
+
+/**
+ * Returns the path to the CLI of the editor this extension is running in.
+ */
+export async function get_editor_cli_path(): Promise<string | undefined> {
+	let application_name: string | undefined
+
+	try {
+		const product_json = await fs.readFile(
+			path.join(vscode.env.appRoot, "product.json"),
+			"utf-8"
+		)
+		application_name = JSON.parse(product_json).applicationName
+	} catch (e) {
+		logger.warn("could not read product.json:", e)
+		return
+	}
+
+	if (!application_name) return
+
+	const binary = IS_WINDOWS ? application_name + ".cmd" : application_name
+	const cli_path = path.join(vscode.env.appRoot, "bin", binary)
+
+	if (await path_exists(cli_path)) {
+		logger.debug(`using '${cli_path}' as ren'py's editor binary`)
+		return cli_path
+	}
+
+	// ren'py looks for visual studio code on its own.
+	// forks get no such treatment, so try $PATH for those
+	if (application_name === "code") {
+		logger.warn(`'${cli_path}' does not exist, letting ren'py find an editor`)
+		return undefined
+	}
+
+	logger.warn(
+		`'${cli_path}' does not exist, falling back to '${binary}' on $PATH`
+	)
+	return binary
 }
 
 /**
