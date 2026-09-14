@@ -9,7 +9,7 @@ jobs:
         os:
           - ubuntu-latest
           - macos-latest
-          # - windows-latest # kinda busted :/
+          - windows-latest
     runs-on: "${{ matrix.os }}"
 
     steps:
