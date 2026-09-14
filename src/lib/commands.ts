@@ -407,11 +407,12 @@ export function get_commands(
 				})
 
 				if (p?.project_root) {
+					const sdk_path = await get_sdk_path()
+					if (!sdk_path) return
+
 					// https://github.com/renpy/renpy/blob/8646cd3f39dd74a17d52d1b882697b24574078d9/launcher/game/distribute.rpy#L876-L878
 					const project_name = path.basename(p.project_root)
-					await show_file(
-						path.join(await get_sdk_path(), "tmp", project_name, "lint.txt")
-					)
+					await show_file(path.join(sdk_path, "tmp", project_name, "lint.txt"))
 				}
 			} catch (error: unknown) {
 				logger.error(error as Error)

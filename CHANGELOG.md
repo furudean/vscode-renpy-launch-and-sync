@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+- Fix a crash when warping or following the cursor in a file that isn't inside a Ren'Py project
+- Fix a crash when linting a project with no SDK path set
+
 ## 3.5.0 - 2026-03-18
 
 - Add "Force Recompile" command (`renpyWarp.forceRecompile`) to recompile all `.rpy` scripts

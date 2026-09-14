@@ -68,6 +68,9 @@ export async function warp_renpy_to_cursor(
 	if (!filename.endsWith(".rpy")) return
 
 	const project_root = find_project_root(file)
+
+	if (!project_root) return
+
 	const filename_relative = path.relative(
 		path.join(project_root, "game/"),
 		file

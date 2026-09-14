@@ -79,6 +79,8 @@ export async function launch_renpy({
 		const project_root = find_project_root(file)
 		logger.debug("game root:", project_root)
 
+		if (!project_root) return
+
 		const filename_relative = path.relative(
 			path.join(project_root, "game/"),
 			file
