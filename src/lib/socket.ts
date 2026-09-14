@@ -46,9 +46,7 @@ export interface CurrentLabelSocketMessage extends SocketMessage {
 }
 
 export type AnySocketMessage =
-	| CurrentLineSocketMessage
-	| ListLabelsSocketMessage
-	| CurrentLabelSocketMessage
+	CurrentLineSocketMessage | ListLabelsSocketMessage | CurrentLabelSocketMessage
 
 export type MessageHandler = (
 	process: AnyProcess,

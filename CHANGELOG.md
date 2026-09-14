@@ -6,6 +6,7 @@ All notable changes to this project will be documented in this file.
 
 - Fix a crash when warping or following the cursor in a file that isn't inside a Ren'Py project
 - Fix a crash when linting a project with no SDK path set
+- Update dependencies
 
 ## 3.5.0 - 2026-03-18
 
