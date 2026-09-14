@@ -279,6 +279,7 @@ export function get_commands(
 							line: last_cursor.line - 1,
 							path: last_cursor.path,
 							relative_path: last_cursor.relative_path,
+							what: last_cursor.what,
 							force: true
 						})
 					}
@@ -307,6 +308,7 @@ export function get_commands(
 				line: last_cursor.line - 1,
 				path: last_cursor.path,
 				relative_path: last_cursor.relative_path,
+				what: last_cursor.what,
 				force: true
 			})
 		},

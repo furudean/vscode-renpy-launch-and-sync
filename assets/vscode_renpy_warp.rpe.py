@@ -62,6 +62,23 @@ def get_meta():
     return d["version"], d["checksum"]
 
 
+def script_dialogue():
+    """
+    the current say statement's text as written in the script, before
+    interpolation, translation and text filters are applied
+    """
+    try:
+        node = renpy.game.script.namemap.get(
+            renpy.game.context().current, None)
+    except Exception:
+        logger.debug("could not look up current node", exc_info=True)
+        return None
+
+    what = getattr(node, "what", None)
+
+    return what if isinstance(what, str) else None
+
+
 def py_exec(text):
     while renpy.exports.is_init_phase():
         logger.debug("in init phase, waiting...")
@@ -136,6 +153,17 @@ def socket_producer(websocket):
                 "path": filename_abs.resolve().as_posix(),
                 "relative_path": relative_filename.resolve().as_posix(),
             }
+
+            # the script text places the cursor on the dialogue. ren'py 8.3
+            # and later also pass the displayed text to character callbacks,
+            # which is used if the script can't be read
+            what = script_dialogue()
+
+            if what is None:
+                what = kwargs.get("what")
+
+            if isinstance(what, str):
+                message["what"] = what
 
             try:
                 send(message)

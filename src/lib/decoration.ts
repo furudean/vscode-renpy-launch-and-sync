@@ -5,6 +5,7 @@ import { get_config } from "./config"
 import { AnySocketMessage, CurrentLineSocketMessage } from "./socket"
 import { realpath } from "node:fs/promises"
 import { get_logger } from "./log"
+import { find_dialogue_position } from "./lex"
 
 const logger = get_logger()
 
@@ -80,7 +81,13 @@ export class DecorationService {
 			for (const [, state] of this.state) {
 				if (path.relative(editor_path, state.path) === "") {
 					const line = state.line - 1
-					ranges.push(new vscode.Range(line, 0, line, 0))
+					const dialogue =
+						state.what === undefined
+							? undefined
+							: find_dialogue_position(editor.document, line, state.what)
+					const at = dialogue?.line ?? line
+
+					ranges.push(new vscode.Range(at, 0, at, 0))
 				}
 			}
 

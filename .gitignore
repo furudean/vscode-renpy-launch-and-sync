@@ -5,3 +5,4 @@ node_modules/**
 *.vsix
 .vscode-test/
 .DS_Store
+__pycache__

@@ -5,6 +5,7 @@ import { get_logger } from "./log"
 import path from "upath"
 import { find_project_root } from "./sh"
 import { StatusBar } from "./status_bar"
+import { find_dialogue_position } from "./lex"
 
 const logger = get_logger()
 const last_warps = new Map<number, string>()
@@ -16,6 +17,8 @@ interface SyncEditorWithRenpyOptions {
 	relative_path: string
 	/** 0-indexed line number */
 	line: number
+	/** dialogue ren'py is displaying, if it reported any */
+	what?: string
 	/** skip redundancy checks */
 	force?: boolean
 	/** pid of the renpy process, used for deduplication */
@@ -26,10 +29,11 @@ export async function sync_editor_with_renpy({
 	path,
 	relative_path,
 	line,
+	what,
 	force,
 	pid = 0
 }: SyncEditorWithRenpyOptions): Promise<void> {
-	const warp_spec = `${path}:${line + 1}`
+	const warp_spec = `${path}:${line + 1}:${what ?? ""}`
 	if (!force && warp_spec === last_warps.get(pid)) return // no change
 	last_warps.set(pid, warp_spec)
 
@@ -38,8 +42,22 @@ export async function sync_editor_with_renpy({
 
 	logger.debug(`syncing editor to ${relative_path}:${line}`)
 
-	const end_of_line = editor.document.lineAt(line).range.end.character
-	const pos = new vscode.Position(line, end_of_line)
+	const dialogue =
+		what === undefined
+			? undefined
+			: find_dialogue_position(editor.document, line, what)
+
+	if (what !== undefined && dialogue === undefined) {
+		logger.debug(`could not place cursor on dialogue ${JSON.stringify(what)}`)
+	}
+
+	// ren'py reports monologue blocks on the line they open on, so the dialogue
+	// can be further down the file than the line it came with
+	const target_line = dialogue?.line ?? line
+	const pos = new vscode.Position(
+		target_line,
+		dialogue?.column ?? editor.document.lineAt(line).range.end.character
+	)
 	const selection = new vscode.Selection(pos, pos)
 
 	editor.revealRange(
@@ -48,7 +66,7 @@ export async function sync_editor_with_renpy({
 	)
 
 	// if the cursor is already on the correct line, don't munge it
-	if (editor.selection.start.line !== line) {
+	if (editor.selection.start.line !== target_line) {
 		editor.selection = selection
 	}
 }

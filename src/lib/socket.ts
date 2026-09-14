@@ -33,6 +33,7 @@ export interface CurrentLineSocketMessage extends SocketMessage {
 	line: number
 	path: string
 	relative_path: string
+	what?: string
 }
 
 export interface ListLabelsSocketMessage extends SocketMessage {
@@ -76,6 +77,7 @@ export function get_message_handler(follow_cursor: FollowCursorService) {
 						path: message.path as string,
 						relative_path: message.relative_path as string,
 						line: (message.line as number) - 1,
+						what: typeof message.what === "string" ? message.what : undefined,
 						pid: process.pid
 					})
 				}

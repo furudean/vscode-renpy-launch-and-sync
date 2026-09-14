@@ -4,6 +4,8 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+- Place the marker/cursor on the current dialogue line, instead of end of line
+  - Also supports monologue mode (`"""text"""`)
 - Fix a crash when warping or following the cursor in a file that isn't inside a Ren'Py project
 - Fix a crash when linting a project with no SDK path set
 - Detect Visual Studio Code forks such as VSCodium and point Ren'Py at their CLI for the editor file
