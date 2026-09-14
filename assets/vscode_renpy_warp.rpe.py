@@ -112,6 +112,16 @@ def resync(script_text, displayed, i, j):
     return None
 
 
+def tag_length(text, i):
+    """the length of the text tag at `i`, or 0 if a tag doesn't start there"""
+    if not text.startswith("{", i) or text.startswith("{{", i):
+        return 0
+
+    close = text.find("}", i)
+
+    return 0 if close == -1 else close + 1 - i
+
+
 def dialogue_offset(script_text, displayed, end):
     """
     where `end`, an index into the text ren'py displays, falls in the text the
@@ -130,14 +140,36 @@ def dialogue_offset(script_text, displayed, end):
     j = 0
 
     while j < end and i < len(script_text):
+        # `{{` escapes a brace, so it is a character of text rather than a tag
+        if script_text[i:i + 2] == displayed[j:j + 2] == "{{":
+            i += 2
+            j += 2
+            continue
+
+        # tags line up as whole units rather than character by character,
+        # since the script and the filter each write their own
+        script_tag = script_text[i:i + tag_length(script_text, i)]
+        displayed_tag = displayed[j:j + tag_length(displayed, j)]
+
+        # the same tag on both sides, so step over it together
+        if script_tag and script_tag == displayed_tag:
+            i += len(script_tag)
+            j += len(displayed_tag)
+            continue
+
+        # a tag the filter added, a pause among them
+        if displayed_tag:
+            j += len(displayed_tag)
+            continue
+
+        # a script tag the filter wrote its own in place of
+        if script_tag:
+            i += len(script_tag)
+            continue
+
         if script_text[i] == displayed[j]:
             i += 1
             j += 1
-            continue
-
-        # a text tag the filter added, a pause among them
-        if displayed[j] == "{" and "}" in displayed[j:]:
-            j = displayed.index("}", j) + 1
             continue
 
         step = resync(script_text, displayed, i, j)
