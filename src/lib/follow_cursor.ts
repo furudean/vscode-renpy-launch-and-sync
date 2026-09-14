@@ -5,7 +5,7 @@ import { get_logger } from "./log"
 import path from "upath"
 import { find_project_root } from "./sh"
 import { StatusBar } from "./status_bar"
-import { find_dialogue_range, SaidRange } from "./lex"
+import { DialogueRange, find_dialogue_range, SaidRange } from "./lex"
 
 const logger = get_logger()
 const last_warps = new Map<number, string>()
@@ -25,6 +25,33 @@ interface SyncEditorWithRenpyOptions {
 	force?: boolean
 	/** pid of the renpy process, used for deduplication */
 	pid?: number
+}
+
+function dialogue_selection(
+	document: vscode.TextDocument,
+	line: number,
+	dialogue: DialogueRange | undefined
+): vscode.Selection {
+	const start = dialogue
+		? new vscode.Position(dialogue.start.line, dialogue.start.column)
+		: document.lineAt(line).range.end
+	const end = dialogue
+		? new vscode.Position(dialogue.end.line, dialogue.end.column)
+		: start
+
+	switch (get_config("followCursorMark") as string) {
+		case "Cursor at dialogue end":
+			return new vscode.Selection(end, end)
+
+		case "Cursor at line end": {
+			const end_of_line = document.lineAt(end.line).range.end
+
+			return new vscode.Selection(end_of_line, end_of_line)
+		}
+
+		default:
+			return new vscode.Selection(start, end)
+	}
 }
 
 export async function sync_editor_with_renpy({
@@ -56,13 +83,7 @@ export async function sync_editor_with_renpy({
 
 	// ren'py reports monologue blocks on the line they open on, so the dialogue
 	// can be further down the file than the line it came with
-	const end_of_line = editor.document.lineAt(line).range.end
-	const selection = dialogue
-		? new vscode.Selection(
-				new vscode.Position(dialogue.start.line, dialogue.start.column),
-				new vscode.Position(dialogue.end.line, dialogue.end.column)
-			)
-		: new vscode.Selection(end_of_line, end_of_line)
+	const selection = dialogue_selection(editor.document, line, dialogue)
 
 	editor.revealRange(
 		selection,

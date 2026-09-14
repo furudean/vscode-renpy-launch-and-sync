@@ -8,6 +8,7 @@ All notable changes to this project will be documented in this file.
   dialogue section, instead of end of line
   - Supports monologue mode properly (i.e. `"""text"""`)
   - Follows `{w}` and `{p}` pauses inside a line of dialogue
+  - New setting `renpyWarp.followCursorMark` change the behavior of this
 - Fix a crash when warping or following the cursor in a file that isn't inside a Ren'Py project
 - Fix a crash when linting a project with no SDK path set
 - Detect Visual Studio Code forks such as VSCodium and point Ren'Py at their CLI for the editor file

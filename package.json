@@ -361,6 +361,22 @@
 						"Try and keep both in sync.\n\n**Note**: Because of how warping works, this can be a bit janky."
 					]
 				},
+				"renpyWarp.followCursorMark": {
+					"type": "string",
+					"order": 2,
+					"markdownDescription": "When the current line changes, how should the cursor behave?",
+					"default": "Select dialogue",
+					"enum": [
+						"Select dialogue",
+						"Cursor at dialogue end",
+						"Cursor at line end"
+					],
+					"markdownEnumDescriptions": [
+						"Select the dialogue being said.",
+						"Place the cursor where the dialogue ends.",
+						"Place the cursor at the end of the line."
+					]
+				},
 				"renpyWarp.followCursorOnLaunch": {
 					"type": "boolean",
 					"default": false,
