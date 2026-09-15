@@ -1,14 +1,51 @@
 "on":
-  release:
-    types: [published]
+  push:
+    tags: ["v[0-9]*"]
   workflow_dispatch: {}
 
 name: Release
 jobs:
-  release:
-    permissions:
-      contents: write
+  meta:
+    name: Read extension metadata
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.info.outputs.version }}
+      tag: ${{ steps.info.outputs.tag }}
+      stable: ${{ steps.info.outputs.stable }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Read version from package.json
+        id: info
+        env:
+          # empty when the workflow is dispatched off a branch instead of a tag
+          TAG: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || '' }}
+        run: |
+          VERSION=$(jq -r '.version' package.json)
+
+          if [ -n "$TAG" ] && [ "$TAG" != "v$VERSION" ]; then
+            echo "::error::tag $TAG does not match package.json version $VERSION"
+            exit 1
+          fi
+
+          # a tag with a suffix, v1.2.3-rc1, is a pre-release
+          case "$TAG" in
+            *-*) stable=false ;;
+            *) stable=true ;;
+          esac
+
+          {
+            echo "version=$VERSION"
+            echo "tag=$TAG"
+            echo "stable=$stable"
+          } >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.platformName }}
+    needs: meta
     strategy:
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
@@ -21,45 +58,81 @@ jobs:
           - os: windows-latest
             target: win32-x64
             platformName: win
-
     runs-on: "${{ matrix.os }}"
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
           node-version: 22
           cache: "npm"
 
       - run: npm ci
 
-      - name: create extension package
+      - name: Create extension package
         run: >-
           npm run package --
-          --out renpy-warp-${{ github.ref_name }}-${{ matrix.platformName }}.vsix
+          --out renpy-warp-${{ needs.meta.outputs.tag }}-${{ matrix.platformName }}.vsix
 
-      - name: create github release
-        uses: ncipollo/release-action@v1
+      - name: Upload artifact to workflow
+        uses: actions/upload-artifact@v4
         with:
-          artifacts: "*.vsix"
-          replacesArtifacts: false
-          tag: ${{ github.ref_name }}
-          allowUpdates: true
-          makeLatest: false
-          omitNameDuringUpdate: true
-          omitBodyDuringUpdate: true
-          omitPrereleaseDuringUpdate: true
-          omitDraftDuringUpdate: true
+          name: vsix-${{ matrix.platformName }}
+          path: "*.vsix"
+          if-no-files-found: error
 
-      - name: release to visual studio code marketplace
+      - name: Release to Visual Studio Code Marketplace
         run: npm run publish:vsce -- --target ${{ matrix.target }}
         env:
           VSCE_PAT: "${{ secrets.VSCE_PAT }}"
 
-      - name: release to open vsx registry
+      - name: Release to Open VSX Registry
         run: >-
           npm run publish:ovsx --
           --target ${{ matrix.target }}
           --pat ${{ secrets.OVSX_TOKEN }}
+
+  release:
+    name: Publish the release
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      TAG: ${{ needs.meta.outputs.tag }}
+      VERSION: ${{ needs.meta.outputs.version }}
+      STABLE: ${{ needs.meta.outputs.stable }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Download the built packages
+        uses: actions/download-artifact@v5
+        with:
+          pattern: vsix-*
+          path: artifacts
+          merge-multiple: true
+
+      - name: Create the release
+        run: |
+          ls -l artifacts
+
+          notes_file=$(mktemp)
+          heading="## $VERSION - "
+          awk -v heading="$heading" \
+            'index($0, heading) == 1 { found = 1 }
+             found && /^## / && index($0, heading) != 1 { exit }
+             found' CHANGELOG.md > "$notes_file"
+
+          if [ "$STABLE" = "true" ]; then
+            prerelease=false
+          else
+            prerelease=true
+          fi
+
+          gh release create "$TAG" artifacts/*.vsix \
+            --title "$TAG" --notes-file "$notes_file" \
+            --prerelease="$prerelease" --latest="$STABLE"
