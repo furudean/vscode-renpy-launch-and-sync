@@ -284,14 +284,6 @@ export class FollowCursorService {
 		this.status_bar.update(() => ({
 			is_follow_cursor: true
 		}))
-
-		if (
-			["Visual Studio Code updates Ren'Py", "Update both"].includes(
-				get_config("followCursorMode") as string
-			)
-		) {
-			await warp_renpy_to_cursor(process, this.status_bar)
-		}
 	}
 
 	private detach() {
