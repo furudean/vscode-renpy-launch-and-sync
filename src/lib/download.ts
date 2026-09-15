@@ -4,7 +4,7 @@ import * as vscode from "vscode"
 import { get_logger } from "./log"
 import p_filter from "p-filter"
 import { path_is_sdk } from "./sdk"
-import { cp, mkdir, readdir, rm, rmdir } from "node:fs/promises"
+import { cp, mkdir, readdir, rm } from "node:fs/promises"
 import path from "upath"
 import { basename } from "node:path"
 import { createHash } from "node:crypto"
@@ -68,10 +68,12 @@ export async function download_sdk(
 					if (sum) {
 						const hash = await get_md5_hash(file.fsPath)
 
-						if (hash !== sum)
+						if (hash !== sum) {
+							await rm(file.fsPath, { force: true })
 							throw new Error(
 								`checksum mismatch for ${file.fsPath}: expected ${sum}, got ${hash}`
 							)
+						}
 					} else {
 						logger.warn("no checksum found, skipping validation")
 					}
@@ -156,7 +158,7 @@ export async function uninstall_sdk(
 	}
 
 	try {
-		await rmdir(sdk_uri.fsPath, { recursive: true })
+		await rm(sdk_uri.fsPath, { recursive: true, force: true })
 		vscode.window.showInformationMessage(
 			`Ren'Py SDK at ${basename(sdk_path)} uninstalled`
 		)

@@ -16,11 +16,26 @@ import { update_existing_rpes } from "./lib/rpe"
 import { register_handlers } from "./lib/handlers"
 import { DecorationService } from "./lib/decoration"
 import { AnyProcess } from "./lib/process"
+import {
+	download_sdk,
+	list_downloaded_sdks,
+	uninstall_sdk
+} from "./lib/download"
 
 const logger = get_logger()
 
 export interface ExtensionApi {
 	pm: ProcessManager
+	/** sdk management with the extension context already bound, for the e2e tests */
+	sdk: {
+		download: (
+			url: string | URL,
+			name: string,
+			validate?: boolean
+		) => Promise<string | undefined>
+		list: () => Promise<string[]>
+		uninstall: (sdk_path: string) => Promise<void>
+	}
 }
 
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
@@ -132,7 +147,15 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		}
 	}
 
-	return { pm }
+	return {
+		pm,
+		sdk: {
+			download: (url, name, validate) =>
+				download_sdk(url, name, context, validate),
+			list: () => list_downloaded_sdks(context),
+			uninstall: (sdk_path) => uninstall_sdk(sdk_path, context)
+		}
+	}
 }
 
 export function deactivate() {

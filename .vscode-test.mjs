@@ -1,13 +1,75 @@
 import { defineConfig } from "@vscode/test-cli"
-import { mkdirSync, writeFileSync } from "node:fs"
-import { tmpdir } from "node:os"
+import { createHash } from "node:crypto"
+import { createWriteStream, mkdirSync, writeFileSync } from "node:fs"
+import { access, readFile } from "node:fs/promises"
+import { pipeline } from "node:stream/promises"
+import { Readable } from "node:stream"
 import { join } from "node:path"
-import { ensure_sdk } from "./scripts/renpy_sdk.mjs"
 
-// the sdk ships the_question, which the e2e tests open as their workspace
-const sdk_path = await ensure_sdk()
+// the e2e tests open this project as their workspace
+const workspace = join(import.meta.dirname, "test", "fixtures", "project")
 
-const user_data_dir = join(tmpdir(), "vscode-renpy-warp-test")
+// the sdk the game tests run against. the archive is fetched once into the
+// cache below, and the tests serve it to the extension from localhost so the
+// extension's own download path runs on every run without touching renpy.org
+const SDK_VERSION = "8.5.3"
+const sdk_cache = join(
+	import.meta.dirname,
+	".vscode-test",
+	"cache",
+	SDK_VERSION
+)
+
+async function fetch_to(url, file) {
+	const response = await fetch(url)
+	if (!response.ok || !response.body) {
+		throw new Error(`failed to download ${url}: ${response.status}`)
+	}
+	await pipeline(Readable.fromWeb(response.body), createWriteStream(file))
+}
+
+async function ensure_sdk_archive() {
+	const name = `renpy-${SDK_VERSION}-sdk.zip`
+	const archive = join(sdk_cache, name)
+	const checksums = join(sdk_cache, "checksums.txt")
+	const base = `https://renpy.org/dl/${SDK_VERSION}/`
+
+	try {
+		await access(archive)
+		await access(checksums)
+		return
+	} catch {
+		// not cached yet
+	}
+
+	mkdirSync(sdk_cache, { recursive: true })
+	console.log(`downloading ${base}${name}`)
+	await fetch_to(base + "checksums.txt", checksums)
+	await fetch_to(base + name, archive)
+
+	const md5 = (await readFile(checksums, "utf8"))
+		.split("# md5")[1]
+		.split("# sha1")[0]
+		.match(new RegExp(`^([a-f0-9]+)\\s+${name}$`, "m"))?.[1]
+	const actual = createHash("md5")
+		.update(await readFile(archive))
+		.digest("hex")
+	if (md5 !== actual) {
+		throw new Error(
+			`checksum mismatch for ${name}: expected ${md5}, got ${actual}`
+		)
+	}
+}
+
+await ensure_sdk_archive()
+
+// the user data dir lives with the other test artifacts so the downloaded sdk
+// survives between runs. the settings file is rewritten each time. that keeps
+// the test window quiet (copilot and friends are built in now, so they are
+// turned off through settings and by disabling them outright) and puts every
+// renpyWarp setting back to a known baseline so nothing a previous run
+// changed leaks into this one
+const user_data_dir = join(import.meta.dirname, ".vscode-test", "user-data")
 mkdirSync(join(user_data_dir, "User"), { recursive: true })
 writeFileSync(
 	join(user_data_dir, "User", "settings.json"),
@@ -18,8 +80,11 @@ writeFileSync(
 		"extensions.autoUpdate": false,
 		"extensions.autoCheckUpdates": false,
 		"workbench.startupEditor": "none",
+		// the fixture project sits inside this repo, and git has no business
+		// in the test window
+		"git.enabled": false,
+		"git.autofetch": false,
 
-		"renpyWarp.sdkPath": sdk_path,
 		"renpyWarp.strategy": "Update Window",
 		"renpyWarp.renpyExtensionsEnabled": "Disabled",
 		"renpyWarp.autoConnectExternalProcesses": "Never connect",
@@ -27,17 +92,21 @@ writeFileSync(
 		"renpyWarp.followCursorBehavior": "Just reveal",
 		"renpyWarp.followCursorOnLaunch": false,
 		"renpyWarp.setAutoReloadOnSave": false,
+		// ren'py skips audio init with this set, so the game runs silent
 		"renpyWarp.processEnvironment": { RENPY_DISABLE_SOUND: "1" }
 	})
 )
 
 export default defineConfig({
 	files: "out/**/*.e2e.test.js",
-	workspaceFolder: join(sdk_path, "the_question"),
-	env: { RENPY_SDK_PATH: sdk_path },
+	workspaceFolder: workspace,
+	env: { RENPY_SDK_VERSION: SDK_VERSION, RENPY_SDK_CACHE: sdk_cache },
 	launchArgs: [
 		`--user-data-dir=${user_data_dir}`,
 		"--disable-extension=GitHub.copilot-chat",
+		"--disable-extension=vscode.git",
+		"--disable-extension=vscode.git-base",
+		"--disable-extension=vscode.github",
 		"--disable-extension=TypeScriptTeam.jsts-chat-features",
 		"--disable-telemetry",
 		"--disable-updates"

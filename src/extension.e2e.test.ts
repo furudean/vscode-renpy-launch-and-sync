@@ -5,39 +5,72 @@ type ManagedProcess = import("./lib/process").ManagedProcess
 const assert: typeof import("node:assert") = require("node:assert")
 const path: typeof import("node:path") = require("node:path")
 const fs: typeof import("node:fs/promises") = require("node:fs/promises")
+const http: typeof import("node:http") = require("node:http")
+const { createHash }: typeof import("node:crypto") = require("node:crypto")
+const AdmZip: typeof import("adm-zip") = require("adm-zip")
 const vscode: typeof import("vscode") = require("vscode")
 
-const sdk_path = process.env.RENPY_SDK_PATH as string
-const project_root = path.join(sdk_path, "the_question")
+// the sdk the game tests run against. .vscode-test.mjs has already fetched
+// the archive into the cache dir, and a server in this process hands it to
+// the extension's download command so that path runs offline every time
+const SDK_VERSION = process.env.RENPY_SDK_VERSION as string
+const SDK_CACHE = process.env.RENPY_SDK_CACHE as string
+const SDK_NAME = `renpy-${SDK_VERSION}-sdk`
+
+// a throwaway sdk for the management tests, built in memory
+const FAKE_NAME = "renpy-0.0.1-sdk"
+const fake_archive = new AdmZip()
+fake_archive.addFile(`${FAKE_NAME}/renpy.py`, Buffer.from("# fake sdk\n"))
+const fake_zip = fake_archive.toBuffer()
+const fake_md5 = createHash("md5").update(fake_zip).digest("hex")
+
+const checksums = (sum: string) => `# md5\n${sum}  ${FAKE_NAME}.zip\n# sha1\n`
+
+/**
+ * serves the cached real sdk under /dl/<version>/ and the fake one under
+ * /good/ (checksum matches) and /bad/ (checksum does not)
+ */
+function serve_sdks(): Promise<import("node:http").Server> {
+	const server = http.createServer(async (request, response) => {
+		const url = new URL(request.url!, "http://localhost")
+		const cached = url.pathname.match(`^/dl/${SDK_VERSION}/([^/]+)$`)
+
+		if (cached) {
+			const file = path.join(SDK_CACHE, cached[1])
+			try {
+				const body = await fs.readFile(file)
+				response.writeHead(200, { "content-length": body.length })
+				return response.end(body)
+			} catch {
+				response.writeHead(404)
+				return response.end()
+			}
+		}
+		if (url.pathname.endsWith(`/${FAKE_NAME}.zip`)) {
+			response.writeHead(200, { "content-length": fake_zip.length })
+			return response.end(fake_zip)
+		}
+		if (url.pathname === "/good/checksums.txt") {
+			return response.end(checksums(fake_md5))
+		}
+		if (url.pathname === "/bad/checksums.txt") {
+			return response.end(checksums("0".repeat(32)))
+		}
+		response.writeHead(404)
+		response.end()
+	})
+
+	return new Promise((resolve) =>
+		server.listen(0, "127.0.0.1", () => resolve(server))
+	)
+}
+
+const project_root = vscode.workspace.workspaceFolders![0].uri.fsPath
 const script = path.join(project_root, "game", "script.rpy")
 
 const fs_path = (file: string) => vscode.Uri.file(file).fsPath
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
-
-/**
- * the 1-based line numbers of the narration statements directly under
- * `label start:` in the_question's script.rpy, in order. the tests step
- * through these rather than hardcoding positions in a file the sdk owns
- */
-async function narration_lines(): Promise<number[]> {
-	const lines = (await fs.readFile(script, "utf8")).split(/\r?\n/)
-	const start = lines.findIndex((line) => /^label start:/.test(line))
-	assert.notStrictEqual(start, -1, "label start not found in script.rpy")
-
-	const found: number[] = []
-
-	for (let i = start + 1; i < lines.length; i++) {
-		const line = lines[i]
-
-		if (/^\S/.test(line)) break
-		if (/^\s+"/.test(line)) found.push(i + 1)
-	}
-
-	assert.ok(found.length >= 3, "expected at least 3 narration lines")
-
-	return found
-}
 
 // ren'py reports 1-based lines, the editor works in 0-based ones
 const editor_line = (line: number) => line - 1
@@ -58,7 +91,7 @@ async function wait_for(
 	what: string,
 	{
 		process,
-		timeout_ms = 30_000
+		timeout_ms = 10_000
 	}: { process?: AnyProcess; timeout_ms?: number } = {}
 ): Promise<void> {
 	const deadline = Date.now() + timeout_ms
@@ -91,24 +124,43 @@ async function update_config(values: Record<string, unknown>): Promise<void> {
 }
 
 suite("renpyWarp", function () {
-	this.timeout(60_000)
+	this.timeout(30_000)
 
 	let api: ExtensionApi
+	let server: import("node:http").Server
+	let origin: string
+	let sdk_path: string
 
-	suiteSetup(async () => {
+	suiteSetup(async function () {
+		// unpacking the real sdk takes a while
+		this.timeout(5 * 60_000)
+
 		const extension = vscode.extensions.getExtension<ExtensionApi>(
 			"PaisleySoftworks.renpyWarp"
 		)
 		assert.ok(extension, "extension not found")
 
 		api = await extension.activate()
+
+		server = await serve_sdks()
+		const address = server.address() as import("node:net").AddressInfo
+		origin = `http://127.0.0.1:${address.port}`
+
+		const downloaded = await api.sdk.download(
+			`${origin}/dl/${SDK_VERSION}/${SDK_NAME}.zip`,
+			SDK_NAME
+		)
+		assert.ok(downloaded, `could not install ${SDK_NAME}`)
+
+		sdk_path = downloaded
+		await update_config({ sdkPath: sdk_path })
+	})
+
+	suiteTeardown(async () => {
+		await new Promise((resolve) => server.close(resolve))
 	})
 
 	test("activates in a ren'py workspace", () => {
-		assert.strictEqual(
-			vscode.workspace.workspaceFolders?.[0].uri.fsPath,
-			fs_path(project_root)
-		)
 		assert.ok(api.pm, "extension api not exported")
 	})
 
@@ -119,7 +171,12 @@ suite("renpyWarp", function () {
 	})
 
 	test("lints the project and opens the report", async () => {
-		const lint_txt = path.join(sdk_path, "tmp", "the_question", "lint.txt")
+		const lint_txt = path.join(
+			sdk_path,
+			"tmp",
+			path.basename(project_root),
+			"lint.txt"
+		)
 		await fs.rm(lint_txt, { force: true })
 
 		await vscode.commands.executeCommand("renpyWarp.lint")
@@ -153,17 +210,77 @@ suite("renpyWarp", function () {
 		assert.strictEqual(api.pm.length, 0)
 	})
 
-	suite("follow cursor", function () {
-		this.timeout(120_000)
+	suite("sdk management", function () {
+		suiteTeardown(async () => {
+			for (const sdk of await api.sdk.list()) {
+				if (path.basename(sdk) === FAKE_NAME) await api.sdk.uninstall(sdk)
+			}
+		})
 
-		// the first three narration lines under `label start`
-		let first: number
-		let second: number
-		let third: number
+		test("downloads, verifies and unpacks an sdk", async () => {
+			const installed = await api.sdk.download(
+				`${origin}/good/${FAKE_NAME}.zip`,
+				FAKE_NAME
+			)
+			assert.ok(installed, "download returned nothing")
+			assert.strictEqual(path.basename(installed), FAKE_NAME)
+
+			const renpy_py = await fs.readFile(
+				path.join(installed, "renpy.py"),
+				"utf8"
+			)
+			assert.strictEqual(renpy_py, "# fake sdk\n")
+
+			// the archive and staging directory are gone once unpacked
+			const siblings = await fs.readdir(path.dirname(installed))
+			assert.ok(!siblings.includes(`${FAKE_NAME}.zip`), "archive left behind")
+			assert.ok(!siblings.includes(`${FAKE_NAME}_tmp`), "staging left behind")
+		})
+
+		test("lists downloaded sdks", async () => {
+			const sdks = (await api.sdk.list()).map((sdk) => path.basename(sdk))
+
+			assert.ok(sdks.includes(FAKE_NAME))
+			assert.ok(sdks.includes(SDK_NAME))
+		})
+
+		test("uninstalls an sdk", async () => {
+			const before = await api.sdk.list()
+			const fake = before.find((sdk) => path.basename(sdk) === FAKE_NAME)
+			assert.ok(fake, "fake sdk not installed")
+
+			await api.sdk.uninstall(fake)
+
+			const after = await api.sdk.list()
+			assert.ok(!after.includes(fake))
+			await assert.rejects(fs.access(fake))
+		})
+
+		test("rejects an sdk whose checksum does not match", async () => {
+			const installed = await api.sdk.download(
+				`${origin}/bad/${FAKE_NAME}.zip`,
+				FAKE_NAME
+			)
+
+			assert.strictEqual(installed, undefined)
+
+			const sdks = (await api.sdk.list()).map((sdk) => path.basename(sdk))
+			assert.ok(!sdks.includes(FAKE_NAME), "bad sdk was installed anyway")
+
+			// the rejected archive is not kept around either
+			const siblings = await fs.readdir(path.dirname(sdk_path))
+			assert.ok(!siblings.includes(`${FAKE_NAME}.zip`), "archive left behind")
+		})
+
+		test("refuses to uninstall a path it did not download", async () => {
+			await assert.rejects(api.sdk.uninstall(project_root), /not found/)
+		})
+	})
+
+	suite("follow cursor", function () {
+		this.timeout(30_000)
 
 		suiteSetup(async () => {
-			;[first, second, third] = await narration_lines()
-
 			await update_config({
 				renpyExtensionsEnabled: "Enabled",
 				strategy: "Update Window",
@@ -209,8 +326,8 @@ suite("renpyWarp", function () {
 
 			await process.jump_to_label("start")
 			await wait_for(
-				() => process.last_cursor?.line === first,
-				`ren'py to report script.rpy:${first}`,
+				() => process.last_cursor?.line === 5,
+				`ren'py to report script.rpy:5`,
 				{ process }
 			)
 			assert.strictEqual(process.last_cursor?.relative_path, "script.rpy")
@@ -219,15 +336,15 @@ suite("renpyWarp", function () {
 		test("ren'py and the editor follow each other", async () => {
 			const process = await running()
 
-			// the previous test may have left the game sitting on the first
-			// line already, so forget that report before jumping there again
+			// the previous test may have left the game sitting on script.rpy:5
+			// already, so forget that report before jumping there again
 			process.last_cursor = undefined
 			const cursor = () => process.last_cursor
 
 			await process.jump_to_label("start")
 			await wait_for(
-				() => cursor()?.line === first,
-				`ren'py to report script.rpy:${first}`,
+				() => cursor()?.line === 5,
+				`ren'py to report script.rpy:5`,
 				{ process }
 			)
 
@@ -236,8 +353,8 @@ suite("renpyWarp", function () {
 			await process.advance()
 
 			await wait_for(
-				() => cursor()?.line === second,
-				`ren'py to report script.rpy:${second}`,
+				() => cursor()?.line === 7,
+				`ren'py to report script.rpy:7`,
 				{ process }
 			)
 			await wait_for(
@@ -245,7 +362,7 @@ suite("renpyWarp", function () {
 					vscode.window.activeTextEditor?.document.uri.fsPath ===
 						fs_path(script) &&
 					vscode.window.activeTextEditor.selection.active.line ===
-						editor_line(second),
+						editor_line(7),
 				"the editor to follow ren'py",
 				{ process }
 			)
@@ -253,16 +370,16 @@ suite("renpyWarp", function () {
 			await vscode.commands.executeCommand("cursorMove", {
 				to: "down",
 				by: "line",
-				value: third - second
+				value: 2
 			})
 			assert.strictEqual(
 				vscode.window.activeTextEditor?.selection.active.line,
-				editor_line(third)
+				editor_line(9)
 			)
 
 			await wait_for(
-				() => cursor()?.line === third,
-				`ren'py to follow the editor to script.rpy:${third}`,
+				() => cursor()?.line === 9,
+				`ren'py to follow the editor to script.rpy:9`,
 				{ process }
 			)
 			assert.strictEqual(cursor()?.relative_path, "script.rpy")
@@ -272,7 +389,7 @@ suite("renpyWarp", function () {
 			await vscode.commands.executeCommand("renpyWarp.killAll")
 			await wait_for(() => api.pm.length === 0, "the game to die")
 
-			await show_line(script, editor_line(second))
+			await show_line(script, editor_line(7))
 			await vscode.commands.executeCommand("renpyWarp.warpToLine")
 
 			const process = api.pm.at(-1)
@@ -286,8 +403,8 @@ suite("renpyWarp", function () {
 			await process.advance()
 
 			await wait_for(
-				() => process.last_cursor?.line === third,
-				`ren'py to report script.rpy:${third}`,
+				() => process.last_cursor?.line === 9,
+				`ren'py to report script.rpy:9`,
 				{ process }
 			)
 		})

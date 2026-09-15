@@ -1,0 +1,57 @@
+-----BEGIN PGP SIGNED MESSAGE-----
+Hash: SHA512
+
+
+# md5
+697264ebea5923c0e0c707e718f74157 android-native-symbols.zip
+c5719f6315b03e8d9b885905a996a723 renpy-8.5.3-rapt.zip
+e7a7def6c088f05a0a96e0909d29e649 renpy-8.5.3-renios.zip
+6d9ab4ebaa6d3f5ee887c2c6b2d261ad renpy-8.5.3-sdk.7z.exe
+e7d311c148bf62ddccd1753029ed0fa7 renpy-8.5.3-sdk.tar.bz2
+dfa68338642f3b14f3e343dae5500381 renpy-8.5.3-sdk.zip
+c394e9aa15467c3fc87cf7f11c42e747 renpy-8.5.3-sdkarm.tar.bz2
+1b33956282e6fc34369ac573d65ba82d renpy-8.5.3-source.tar.bz2
+28112521b92713692ab9205f127d7c03 renpy-8.5.3-steam.zip
+828d468d58818fe64ca4b9cd60fd7fbc renpy-8.5.3-web.zip
+
+# sha1
+f70c81875214a0ef55fd670538d4eaa18b52e37c android-native-symbols.zip
+9a20017350e0d56c222c821a41fb4bcde0d0208e renpy-8.5.3-rapt.zip
+86d26d3ee5db5b483919fc7f106df2d5bf7af7d7 renpy-8.5.3-renios.zip
+835f3f7b9b70128a203689a2a6649e6d1a14014a renpy-8.5.3-sdk.7z.exe
+c153dde7af591261bd73c28165d60e3bdbdf446b renpy-8.5.3-sdk.tar.bz2
+15846ce797a3d73550cbdc73deff3e1bc6c943ac renpy-8.5.3-sdk.zip
+2be156049df540e3020c87bcbbcb3427c2f43bc5 renpy-8.5.3-sdkarm.tar.bz2
+cccc5dfacfc96ed1512ef0d99f122c4656704ac7 renpy-8.5.3-source.tar.bz2
+9e47ed1925c6faba97755577046dde93d7e7b4a4 renpy-8.5.3-steam.zip
+84890998569788938e7569be3190ffcbf92e1c8b renpy-8.5.3-web.zip
+
+# sha256
+9030dd2b3fc3c1e54f1b0ef36d230f5ff7dbc8ab807eac935a39bfa879c604a3 android-native-symbols.zip
+8a12be34a2f5238d125ff6dd76a56772fd8e44838af864f81bca82c1059b00e6 renpy-8.5.3-rapt.zip
+c4fae153e8276ed0faed5e84ea3e0b7c4bf337f0e3208e9130c6a41748a83b2b renpy-8.5.3-renios.zip
+f0d18b03af2bd1eb6dee223071557028a287f4b82a2403bddf1f336869346dfb renpy-8.5.3-sdk.7z.exe
+eb0a9be7f0fb13632fe25ceade9a8bed5a1b4d6b6e83bd19eeeb29e1a1bb4a45 renpy-8.5.3-sdk.tar.bz2
+ff57648f9c04f27e381c48af6d8e3ee3cdec296bed4d3831f47f09b0a71b505e renpy-8.5.3-sdk.zip
+0579782517f203ba3535dcc2dab54e34bfc318f2f2a7510a5130b6f809f901f6 renpy-8.5.3-sdkarm.tar.bz2
+4fd3d7bca7349b0d182830d3cdcf65940fa32e66be1aea0b3690e048be6282a5 renpy-8.5.3-source.tar.bz2
+77686e7063100f6704a5abc904ff7ddddb94485f5ebbd35ca7b1129a684c21fa renpy-8.5.3-steam.zip
+954db897e65f51ea63cb2fb7b203d02be0447f4e22069514020bbe6c6691fdfc renpy-8.5.3-web.zip
+
+
+-----BEGIN PGP SIGNATURE-----
+
+iQIzBAEBCgAdFiEE+v0UmETNR+pGS6XIELPNO36zHWYFAmoHysYACgkQELPNO36z
+HWatpBAAqZXGWgxBqwGg1KMvPThC52fP5pCJTFjO4SBPZyrVSm7Tm2r+u0+UHFTy
+g5w7J6dH6kOBsWsnmuv73Yw0r7lhBmtzZPwuOFH9rdGy5aWEYee9rHJdSZjsRKsa
+PVZ1nv2IYKMBy4oYgqzrE/MXO6Z7JCBteSl4idR7prZzAaNQx7yS3FlO18Ttp6+W
++SDB1x58MpxlORCfcOUxplBIxGbRH8/SMILXOImOy+mdzIv3VOTF5qpvYpJ0I97W
+GUKLjqDKdR7cQW2QbZlPW/8roJUCiQwI11trijdtNlZbYpYaGnu/qeza+S69almZ
+B1hVnj3FUtytER1k2vZfYxXakKppChmsMgVtyFk4WpcrvyVbg/Y9lzbN0kC8gqPE
+FaZ1RPoKEhCfa7GiTFl2gyVb3av2urcM4XVvHGzrX7n+nr+86hGcutiZ5EKXtB+Q
+tKWD3y8tC1M2og48jtDQ7HDEvzUn+cKPYdD3zr771fnYf9JIDSjmAxwInN23fW7n
+YKToIX4cRB5u9HCwvlYK1bRS5ClbCrCk4u387uDsKFK7NNvIMOII+PVlLlcaEDWO
+p5A4BBtRHMzy1Gt8ovx1QASkUfWJ1E4IVPbyfTwewCQSydj5ymIcxyjaeQOVEVJZ
+SS2xazfIhAmBQBb/FPXlqGMUIdV29kB/F4SAW9P9I7R3V1xPveU=
+=lHHB
+-----END PGP SIGNATURE-----

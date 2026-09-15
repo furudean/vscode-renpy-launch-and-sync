@@ -6,3 +6,11 @@ node_modules/**
 .vscode-test/
 .DS_Store
 __pycache__
+
+# ren'py output in the e2e fixture project
+test/fixtures/project/game/cache/
+test/fixtures/project/game/saves/
+test/fixtures/project/**/*.rpyc
+test/fixtures/project/log.txt
+test/fixtures/project/traceback.txt
+test/fixtures/project/errors.txt
