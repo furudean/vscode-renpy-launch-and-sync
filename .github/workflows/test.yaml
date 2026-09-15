@@ -33,6 +33,8 @@ jobs:
 
       - run: npm ci
 
+      - run: npm run lint
+
       - run: xvfb-run -a npm test
         if: runner.os == 'Linux'
 

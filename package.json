@@ -40,7 +40,6 @@
 		"package": "vsce package",
 		"compile-tests": "tsc -p . --outDir out",
 		"watch-tests": "tsc -p . -w --outDir out",
-		"pretest": "npm run lint",
 		"check-types": "tsc --noEmit",
 		"lint": "npm run check-types && eslint && prettier --check .",
 		"format": "prettier --write .",
