@@ -26,17 +26,6 @@ async function wait_for(
 	}
 }
 
-async function show_line(
-	file: string,
-	line: number
-): Promise<import("vscode").TextEditor> {
-	const document = await vscode.workspace.openTextDocument(file)
-	const editor = await vscode.window.showTextDocument(document)
-	editor.selection = new vscode.Selection(line, 0, line, 0)
-
-	return editor
-}
-
 async function update_config(values: Record<string, unknown>): Promise<void> {
 	const config = vscode.workspace.getConfiguration("renpyWarp")
 
@@ -122,31 +111,63 @@ suite("renpyWarp", function () {
 			await vscode.commands.executeCommand("renpyWarp.killAll")
 		})
 
-		test("ren'py and the editor follow each other", async () => {
-			// script.rpy:20 is a line of narration inside `label start`
-			await show_line(script, 19)
-			await vscode.commands.executeCommand("renpyWarp.warpToLine")
+		// launches the game when nothing is running and hands back the process
+		// once its rpe has connected
+		async function running(): Promise<import("./lib/process").AnyProcess> {
+			if (api.pm.length === 0) {
+				await vscode.commands.executeCommand("renpyWarp.launch")
+			}
 
 			const process = api.pm.at(-1)
 			assert.ok(process, "game did not launch")
 
-			// the launch warp lands before the rpe has connected, so nothing is
-			// reported until the game moves again
 			await wait_for(() => process.socket_ready, "the rpe to connect")
 
-			// ren'py updates the editor as the game moves on from the launch
-			// warp at script.rpy:20 to the next line of narration
+			return process
+		}
+
+		test("can receive and jump to a label", async () => {
+			const process = await running()
+
+			await process.wait_for_labels(10_000)
+			assert.ok(process.labels?.includes("start"), "label start not listed")
+
+			// script.rpy:18 is the first line of narration under `label start`
+			await process.jump_to_label("start")
+			await wait_for(
+				() => process.last_cursor?.line === 18,
+				"ren'py to report script.rpy:18"
+			)
+			assert.strictEqual(process.last_cursor?.relative_path, "script.rpy")
+		})
+
+		test("ren'py and the editor follow each other", async () => {
+			const process = await running()
+
+			// the previous test may have left the game sitting on script.rpy:18
+			// already, so forget that report before jumping there again
+			process.last_cursor = undefined
+			const cursor = () => process.last_cursor
+
+			await process.jump_to_label("start")
+			await wait_for(
+				() => cursor()?.line === 18,
+				"ren'py to report script.rpy:18"
+			)
+
+			// ren'py updates the editor as the game moves on to the next line of
+			// narration
 			await process.advance()
 
 			await wait_for(
-				() => process.last_cursor?.line === 22,
-				"ren'py to report script.rpy:22"
+				() => cursor()?.line === 20,
+				"ren'py to report script.rpy:20"
 			)
 			await wait_for(
 				() =>
 					vscode.window.activeTextEditor?.document.uri.fsPath ===
 						fs_path(script) &&
-					vscode.window.activeTextEditor.selection.active.line === 21,
+					vscode.window.activeTextEditor.selection.active.line === 19,
 				"the editor to follow ren'py"
 			)
 
@@ -157,14 +178,14 @@ suite("renpyWarp", function () {
 			})
 			assert.strictEqual(
 				vscode.window.activeTextEditor?.selection.active.line,
-				23
+				21
 			)
 
 			await wait_for(
-				() => process.last_cursor?.line === 24,
-				"ren'py to follow the editor to script.rpy:24"
+				() => cursor()?.line === 22,
+				"ren'py to follow the editor to script.rpy:22"
 			)
-			assert.strictEqual(process.last_cursor?.relative_path, "script.rpy")
+			assert.strictEqual(cursor()?.relative_path, "script.rpy")
 		})
 	})
 })
