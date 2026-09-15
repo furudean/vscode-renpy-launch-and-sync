@@ -83,11 +83,14 @@ jobs:
           path: "*.vsix"
           if-no-files-found: error
 
+      # TODO: use OIDC when it launches . PATs stop working dec 1 2026
+      # see https://github.com/microsoft/vsmarketplace/issues/1422
       - name: Release to Visual Studio Code Marketplace
         run: npm run publish:vsce -- --target ${{ matrix.target }}
         env:
           VSCE_PAT: "${{ secrets.VSCE_PAT }}"
 
+      # TODO: use trusted publishing when it's live
       - name: Release to Open VSX Registry
         run: >-
           npm run publish:ovsx --
