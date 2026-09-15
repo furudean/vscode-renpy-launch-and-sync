@@ -106,6 +106,37 @@ export class UnmanagedProcess {
 		)
 	}
 
+	private wait_until(
+		predicate: () => boolean,
+		{ timeout_ms, what }: { timeout_ms: number; what: string }
+	): Promise<void> {
+		return new Promise((resolve, reject) => {
+			const finish = (error?: Error) => {
+				clearTimeout(timeout)
+				clearInterval(interval)
+
+				if (error) {
+					reject(error)
+				} else {
+					resolve()
+				}
+			}
+
+			const timeout = setTimeout(
+				() => finish(new Error(`timed out waiting for ${what}`)),
+				timeout_ms
+			)
+
+			const interval = setInterval(() => {
+				if (predicate()) {
+					finish()
+				} else if (this.dead) {
+					finish(new Error(`process died before ${what}`))
+				}
+			}, 50)
+		})
+	}
+
 	async wait_for_socket(timeout_ms: number): Promise<void> {
 		if (this.socket_ready) return
 
@@ -117,25 +148,10 @@ export class UnmanagedProcess {
 				location: vscode.ProgressLocation.Notification,
 				cancellable: false
 			},
-			async () =>
-				new Promise((resolve, reject) => {
-					const timeout = setTimeout(() => {
-						clearInterval(interval)
-						reject(new Error("timed out"))
-					}, timeout_ms)
-
-					const interval = setInterval(() => {
-						if (this.socket_ready || this.dead) {
-							clearTimeout(timeout)
-							clearInterval(interval)
-
-							if (this.socket_ready) {
-								resolve()
-							} else {
-								reject(new Error("process died before socket connected"))
-							}
-						}
-					}, 50)
+			() =>
+				this.wait_until(() => this.socket_ready, {
+					timeout_ms,
+					what: "socket connection"
 				})
 		)
 	}
@@ -145,24 +161,9 @@ export class UnmanagedProcess {
 
 		logger.info("waiting for labels from renpy window...")
 
-		return new Promise((resolve, reject) => {
-			const timeout = setTimeout(() => {
-				clearInterval(interval)
-				reject(new Error("timed out waiting for labels"))
-			}, timeout_ms)
-
-			const interval = setInterval(() => {
-				if (this.labels || this.dead) {
-					clearTimeout(timeout)
-					clearInterval(interval)
-
-					if (this.labels) {
-						resolve()
-					} else {
-						reject(new Error("process died before labels connected"))
-					}
-				}
-			})
+		return this.wait_until(() => this.labels !== undefined, {
+			timeout_ms,
+			what: "labels"
 		})
 	}
 

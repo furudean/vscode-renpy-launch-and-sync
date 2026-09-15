@@ -52,6 +52,13 @@ export interface CurrentLabelSocketMessage extends SocketMessage {
 export type AnySocketMessage =
 	CurrentLineSocketMessage | ListLabelsSocketMessage | CurrentLabelSocketMessage
 
+/** connection details a client presents during the websocket handshake */
+export interface SocketClient {
+	pid: number
+	nonce?: number
+	project_root: string
+}
+
 export type MessageHandler = (
 	process: AnyProcess,
 	data: SocketMessage
@@ -62,35 +69,29 @@ export function get_message_handler(follow_cursor: FollowCursorService) {
 		process: AnyProcess,
 		message: SocketMessage
 	) {
-		const message_handler: Record<string, () => Promise<void> | void> = {
-			async current_line() {
-				logger.debug(
-					`current line reported as ${message.relative_path}:${message.line}`
-				)
+		if (message.type !== "current_line") return
 
-				if (follow_cursor.active_process === process) {
-					if (
-						!["Ren'Py updates Visual Studio Code", "Update both"].includes(
-							get_config("followCursorMode") as string
-						)
-					)
-						return
+		logger.debug(
+			`current line reported as ${message.relative_path}:${message.line}`
+		)
 
-					await sync_editor_with_renpy({
-						path: message.path as string,
-						relative_path: message.relative_path as string,
-						line: (message.line as number) - 1,
-						what: typeof message.what === "string" ? message.what : undefined,
-						said: said_range(message as CurrentLineSocketMessage),
-						pid: process.pid
-					})
-				}
-			}
-		}
+		if (follow_cursor.active_process !== process) return
 
-		if (message.type in message_handler) {
-			await message_handler[message.type]()
-		}
+		if (
+			!["Ren'Py updates Visual Studio Code", "Update both"].includes(
+				get_config("followCursorMode") as string
+			)
+		)
+			return
+
+		await sync_editor_with_renpy({
+			path: message.path as string,
+			relative_path: message.relative_path as string,
+			line: (message.line as number) - 1,
+			what: typeof message.what === "string" ? message.what : undefined,
+			said: said_range(message as CurrentLineSocketMessage),
+			pid: process.pid
+		})
 	}
 }
 
@@ -164,31 +165,18 @@ export class WarpSocketService {
 			socket.on("error", logger.error)
 
 			this.handle_handshake(request)
-				.then((request_ok) => {
-					if (!request_ok) {
+				.then((client) => {
+					if (!client) {
 						socket.destroy()
 						return
 					}
 
-					const pid = Number(request.headers["pid"])
-					const nonce = request.headers["warp-nonce"]
-						? Number(request.headers["warp-nonce"])
-						: undefined
-					const project_root = request.headers["warp-project-root"] as string
-
-					socket_server.handleUpgrade(request, socket, head, function done(ws) {
-						socket_server.emit("connection", {
-							ws,
-							pid,
-							nonce,
-							project_root
-						})
+					socket_server.handleUpgrade(request, socket, head, (ws) => {
+						this.handle_socket_connection(ws, client)
 					})
 				})
 				.catch(logger.error)
 		})
-
-		socket_server.on("connection", this.handle_socket_connection.bind(this))
 
 		function handle_error(error: unknown) {
 			logger.error("socket server error:", error)
@@ -238,32 +226,36 @@ export class WarpSocketService {
 		return port
 	}
 
-	private is_managed_process(nonce?: number) {
-		return nonce && this.pm.get(nonce)
+	/** the process this extension launched under `nonce`, if there is one */
+	private get_managed_process(nonce?: number): ManagedProcess | undefined {
+		const rpp = nonce === undefined ? undefined : this.pm.get(nonce)
+
+		return rpp instanceof ManagedProcess ? rpp : undefined
 	}
 
-	private handle_socket_connection({
-		ws,
-		pid,
-		nonce,
-		project_root
-	}: {
-		ws: WebSocket
-		pid: number
-		nonce: number
-		project_root: string
-	}) {
-		let rpp: ManagedProcess | UnmanagedProcess
+	private handle_socket_connection(
+		ws: WebSocket,
+		{ pid, nonce, project_root }: SocketClient
+	) {
+		const managed = this.get_managed_process(nonce)
 
-		if (this.is_managed_process(nonce)) {
-			rpp = this.handle_managed_process(nonce)
-			rpp.socket = ws
-		} else {
-			rpp = this.handle_unmanaged_process({
-				pid,
-				project_root,
-				ws
-			})
+		if (managed) {
+			logger.info(
+				`socket server discovered managed process ${managed.pid} with nonce ${nonce}`
+			)
+		}
+
+		const rpp =
+			managed ?? this.handle_unmanaged_process({ pid, project_root, ws })
+
+		// a new process is constructed holding `ws` already, so this replaces a
+		// socket only where the process was reconnecting over an older one
+		if (rpp.socket !== ws) {
+			if (rpp.socket) {
+				logger.warn(`replacing existing socket for pid ${rpp.pid}`)
+				rpp.socket.close(4000, "connection replaced")
+			}
+
 			rpp.socket = ws
 		}
 
@@ -285,7 +277,10 @@ export class WarpSocketService {
 		})
 	}
 
-	private async handle_handshake(req: IncomingMessage): Promise<boolean> {
+	/** vets a connection request, resolving with the client if it may connect */
+	private async handle_handshake(
+		req: IncomingMessage
+	): Promise<SocketClient | undefined> {
 		const socket_version = req.headers["warp-version"]
 		const socket_checksum = req.headers["warp-checksum"]
 		const socket_nonce = req.headers["warp-nonce"]
@@ -294,11 +289,17 @@ export class WarpSocketService {
 		const socket_pid = Number(req.headers["pid"])
 		const socket_project_root = req.headers["warp-project-root"] as string
 
+		const client: SocketClient = {
+			pid: socket_pid,
+			nonce: socket_nonce,
+			project_root: socket_project_root
+		}
+
 		if (this.deny_processes.has(socket_pid)) {
 			logger.debug(
 				`ignoring connection request from pid ${socket_pid} as its in ack list`
 			)
-			return false
+			return undefined
 		}
 
 		const [rpe_checksum, project_roots] = await Promise.all([
@@ -317,7 +318,7 @@ export class WarpSocketService {
 					.join(", ")}`
 			)
 			this.deny_processes.add(socket_pid)
-			return false
+			return undefined
 		}
 
 		if (socket_checksum !== rpe_checksum) {
@@ -341,10 +342,10 @@ export class WarpSocketService {
 
 				if (picked === "Update") {
 					const sdk_path = await get_sdk_path()
-					if (!sdk_path) return false
+					if (!sdk_path) return undefined
 
 					const executable = await get_executable(sdk_path)
-					if (!executable) return false
+					if (!executable) return undefined
 
 					await prompt_install_rpe({
 						project: socket_project_root,
@@ -357,16 +358,16 @@ export class WarpSocketService {
 				}
 			}
 
-			return false
+			return undefined
 		}
 
-		if (!this.is_managed_process(socket_nonce)) {
+		if (!this.get_managed_process(socket_nonce)) {
 			const auto_connect_setting = get_config(
 				"autoConnectExternalProcesses"
 			) as string
 
 			if (auto_connect_setting === "Ask") {
-				if (this.allowed_processes.has(socket_pid)) return true
+				if (this.allowed_processes.has(socket_pid)) return client
 
 				const picked = await vscode.window.showInformationMessage(
 					`A Ren'Py process wants to connect to this window`,
@@ -384,7 +385,7 @@ export class WarpSocketService {
 				}
 				if (["Ignore", undefined].includes(picked)) {
 					this.deny_processes.add(socket_pid)
-					return false
+					return undefined
 				}
 				if (picked === "Always ignore") {
 					this.deny_processes.add(socket_pid)
@@ -392,11 +393,11 @@ export class WarpSocketService {
 				}
 			} else if (auto_connect_setting === "Never connect") {
 				this.deny_processes.add(socket_pid)
-				return false
+				return undefined
 			}
 		}
 
-		return true
+		return client
 	}
 
 	private handle_unmanaged_process({
@@ -407,68 +408,46 @@ export class WarpSocketService {
 		pid: number
 		project_root: string
 		ws: WebSocket
-	}): UnmanagedProcess {
-		let rpp: UnmanagedProcess
-
+	}): AnyProcess {
 		logger.info(`socket server discovered unmanaged process ${pid}`)
 
-		if (this.pm.get(pid)) {
+		const existing = this.pm.get(pid)
+
+		if (existing) {
 			logger.info("has existing process, reusing it")
-			rpp = this.pm.get(pid) as UnmanagedProcess
-			rpp.socket?.close(4000, "connection replaced") // close existing socket
-			rpp.socket = ws
+
+			return existing
+		}
+
+		logger.info("creating new unmanaged process")
+
+		const rpp = new UnmanagedProcess({ pid, project_root, socket: ws })
+
+		rpp.on("exit", () => {
+			logger.info(`external process ${pid} exited`)
+			this.status_bar.delete_process(pid)
+		})
+
+		this.pm.add(pid, rpp)
+		this.status_bar.set_process(pid, "idle")
+
+		if (this.context.globalState.get("hideExternalProcessConnected")) {
+			this.status_bar.notify(`$(plug) Connected to Ren'Py process ${pid}`)
 		} else {
-			logger.info("creating new unmanaged process")
-			rpp = new UnmanagedProcess({
-				pid,
-				project_root,
-				socket: ws
-			})
-
-			rpp.on("exit", () => {
-				logger.info(`external process ${pid} exited`)
-				this.status_bar.delete_process(pid)
-			})
-
-			this.pm.add(pid, rpp)
-			this.status_bar.set_process(pid, "idle")
-
-			if (!this.context.globalState.get("hideExternalProcessConnected")) {
-				vscode.window
-					.showInformationMessage(
-						"Connected to external Ren'Py process",
-						"OK",
-						"Don't show again"
-					)
-					.then((selection) => {
-						if (selection === "Don't show again") {
-							this.context.globalState.update(
-								"hideExternalProcessConnected",
-								true
-							)
-						}
-					})
-			} else {
-				this.status_bar.notify(`$(plug) Connected to Ren'Py process ${pid}`)
-			}
-		}
-		return rpp
-	}
-
-	private handle_managed_process(nonce: number): ManagedProcess {
-		const rpp = this.pm.get(nonce) as ManagedProcess | undefined
-
-		if (!(rpp instanceof ManagedProcess)) {
-			throw new Error("expected ManagedProcess")
-		}
-
-		logger.info(
-			`socket server discovered managed process ${rpp.pid} with nonce ${nonce}`
-		)
-
-		if (rpp.socket) {
-			logger.warn("closing existing socket")
-			rpp.socket.close(4000, "connection replaced")
+			vscode.window
+				.showInformationMessage(
+					"Connected to external Ren'Py process",
+					"OK",
+					"Don't show again"
+				)
+				.then((selection) => {
+					if (selection === "Don't show again") {
+						this.context.globalState.update(
+							"hideExternalProcessConnected",
+							true
+						)
+					}
+				})
 		}
 
 		return rpp
