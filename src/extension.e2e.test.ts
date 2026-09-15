@@ -385,6 +385,55 @@ suite("renpyWarp", function () {
 			assert.strictEqual(cursor()?.relative_path, "script.rpy")
 		})
 
+		test("leaves both sides alone when not following", async () => {
+			const process = await running()
+
+			await vscode.commands.executeCommand("renpyWarp.toggleFollowCursor")
+
+			// park the editor on the `return`, then move the game. neither side
+			// should react to the other until following is back on
+			await show_line(script, editor_line(13))
+			process.last_cursor = undefined
+			const cursor = () => process.last_cursor
+
+			await process.jump_to_label("start")
+			await wait_for(
+				() => cursor()?.line === 5,
+				"ren'py to report script.rpy:5",
+				{ process }
+			)
+			await sleep(500)
+			assert.strictEqual(
+				vscode.window.activeTextEditor?.selection.active.line,
+				editor_line(13),
+				"editor moved while not following"
+			)
+
+			await show_line(script, editor_line(9))
+			await sleep(500)
+			assert.strictEqual(cursor()?.line, 5, "ren'py moved while not following")
+
+			await vscode.commands.executeCommand("renpyWarp.toggleFollowCursor")
+			await wait_for(
+				() =>
+					vscode.window.activeTextEditor?.selection.active.line ===
+					editor_line(5),
+				"the editor to catch up with ren'py",
+				{ process }
+			)
+
+			await vscode.commands.executeCommand("cursorMove", {
+				to: "down",
+				by: "line",
+				value: 2
+			})
+			await wait_for(
+				() => cursor()?.line === 7,
+				"ren'py to follow the editor again",
+				{ process }
+			)
+		})
+
 		test("launches the game warped to a line", async () => {
 			await vscode.commands.executeCommand("renpyWarp.killAll")
 			await wait_for(() => api.pm.length === 0, "the game to die")
