@@ -16,6 +16,12 @@ import { StatusBar } from "./status_bar"
 import { FollowCursorService, sync_editor_with_renpy } from "./follow_cursor"
 import { get_logger } from "./log"
 import { is_special_label } from "./label"
+import {
+	get_statements,
+	next_resting_statement,
+	warp_refusal,
+	warp_target
+} from "./script"
 import path from "upath"
 
 const logger = get_logger()
@@ -43,11 +49,21 @@ export function get_commands(
 			const editor = vscode.window.activeTextEditor
 			if (!editor) return
 
+			const line = editor.selection.active.line
+			const target = warp_target(get_statements(editor.document), line)
+
+			// an explicit warp takes any statement the game can play, since
+			// the user asked for this one rather than happening to sit on it
+			if (!target?.warpable) {
+				vscode.window.showErrorMessage(warp_refusal(target, line), "OK")
+				return
+			}
+
 			try {
 				await launch_renpy({
 					intent: "Starting Ren'Py at line...",
-					file: editor?.document.uri.fsPath,
-					line: editor?.selection.active.line,
+					file: editor.document.uri.fsPath,
+					line: target.warp_line,
 					context,
 					pm,
 					status_bar,
@@ -59,16 +75,30 @@ export function get_commands(
 		},
 
 		"renpyWarp.warpToFile": async (uri: unknown) => {
-			const fs_path =
+			const document =
 				uri instanceof vscode.Uri
-					? uri.fsPath
-					: vscode.window.activeTextEditor?.document.uri.fsPath
+					? await vscode.workspace.openTextDocument(uri)
+					: vscode.window.activeTextEditor?.document
+
+			if (!document) return
+
+			// the top of a file is rarely a statement, so start at the first one
+			// the game comes to rest on
+			const target = next_resting_statement(get_statements(document), 0)
+
+			if (target === undefined) {
+				vscode.window.showErrorMessage(
+					"There is nothing to start at in this file, as it holds no statements Ren'Py can play",
+					"OK"
+				)
+				return
+			}
 
 			try {
 				await launch_renpy({
 					intent: "Starting Ren'Py at file...",
-					file: fs_path,
-					line: 0,
+					file: document.uri.fsPath,
+					line: target.warp_line,
 					context,
 					pm,
 					status_bar,

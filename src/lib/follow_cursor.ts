@@ -5,11 +5,23 @@ import { get_logger } from "./log"
 import path from "upath"
 import { find_project_root } from "./sh"
 import { StatusBar } from "./status_bar"
-import { find_dialogue_range, SaidRange } from "./lex"
+import {
+	DialogueRange,
+	find_dialogue_range,
+	said_range,
+	SaidRange
+} from "./dialogue"
 import { cursor_selection, dialogue_range } from "./mark"
+import {
+	editor_line,
+	get_statements,
+	warp_refusal,
+	warp_target
+} from "./script"
 
 const logger = get_logger()
 const last_warps = new Map<number, string>()
+const refusing = new Set<number>()
 
 let own_mark: { uri: string; selection: vscode.Selection } | undefined
 
@@ -18,7 +30,7 @@ interface SyncEditorWithRenpyOptions {
 	path: string
 	/** path relative from the game folder (e.g. `script.rpy`) */
 	relative_path: string
-	/** 0-indexed line number */
+	/** 0-indexed line ren'py reported, in ren'py's own numbering */
 	line: number
 	/** dialogue ren'py is displaying, if it reported any */
 	what?: string
@@ -30,33 +42,28 @@ interface SyncEditorWithRenpyOptions {
 	pid?: number
 }
 
-export async function sync_editor_with_renpy({
-	path,
-	relative_path,
-	line,
-	what,
-	said,
-	force,
-	pid = 0
-}: SyncEditorWithRenpyOptions): Promise<void> {
-	const warp_spec = `${path}:${line + 1}:${what ?? ""}:${said?.from}-${said?.to}`
-	if (!force && warp_spec === last_warps.get(pid)) return // no change
-	last_warps.set(pid, warp_spec)
+function reported_dialogue(
+	document: vscode.TextDocument,
+	line: number,
+	what: string | undefined,
+	said: SaidRange | undefined
+): DialogueRange | undefined {
+	if (what === undefined) return undefined
 
-	const doc = await vscode.workspace.openTextDocument(path)
-	const editor = await vscode.window.showTextDocument(doc)
+	const dialogue = find_dialogue_range(document, line, what, said)
 
-	logger.debug(`syncing editor to ${relative_path}:${line}`)
-
-	const dialogue =
-		what === undefined
-			? undefined
-			: find_dialogue_range(editor.document, line, what, said)
-
-	if (what !== undefined && dialogue === undefined) {
+	if (dialogue === undefined) {
 		logger.debug(`could not find the dialogue ${JSON.stringify(what)}`)
 	}
 
+	return dialogue
+}
+
+function reveal_dialogue(
+	editor: vscode.TextEditor,
+	line: number,
+	dialogue: DialogueRange | undefined
+): void {
 	// ren'py reports monologue blocks on the line they open on, so the dialogue
 	// can be further down the file than the line it came with
 	const range = dialogue
@@ -68,6 +75,31 @@ export async function sync_editor_with_renpy({
 		range,
 		vscode.TextEditorRevealType.InCenterIfOutsideViewport
 	)
+}
+
+export async function sync_editor_with_renpy({
+	path,
+	relative_path,
+	line: reported_line,
+	what,
+	said,
+	force,
+	pid = 0
+}: SyncEditorWithRenpyOptions): Promise<void> {
+	const warp_spec = `${path}:${reported_line + 1}:${what ?? ""}:${said?.from}-${said?.to}`
+	if (!force && warp_spec === last_warps.get(pid)) return // no change
+	last_warps.set(pid, warp_spec)
+
+	const doc = await vscode.workspace.openTextDocument(path)
+	const editor = await vscode.window.showTextDocument(doc)
+
+	const line = editor_line(get_statements(doc), reported_line)
+
+	logger.debug(`syncing editor to ${relative_path}:${line}`)
+
+	const dialogue = reported_dialogue(editor.document, line, what, said)
+
+	reveal_dialogue(editor, line, dialogue)
 
 	const selection = cursor_selection(editor.document, line, dialogue)
 
@@ -86,12 +118,68 @@ function is_own_mark(event: vscode.TextEditorSelectionChangeEvent): boolean {
 	)
 }
 
+function is_at_renpy_cursor(
+	rp: AnyProcess,
+	editor: vscode.TextEditor
+): boolean {
+	const last_cursor = rp.last_cursor
+
+	if (!last_cursor) return false
+
+	const document = editor.document
+
+	if (
+		path.normalize(document.uri.fsPath) !== path.normalize(last_cursor.path)
+	) {
+		return false
+	}
+
+	// ren'py reports the line a statement opens on, so anywhere inside one is
+	// the same place as far as warping goes
+	const target = warp_target(
+		get_statements(document),
+		editor.selection.active.line
+	)
+
+	return target?.warp_line === last_cursor.line - 1
+}
+
+function reveal_renpy_cursor(rp: AnyProcess, editor: vscode.TextEditor): void {
+	const last_cursor = rp.last_cursor
+
+	if (!last_cursor) return
+
+	// opening the file ren'py happens to be in would take the user off
+	// whatever they were working on
+	if (
+		path.normalize(editor.document.uri.fsPath) !==
+		path.normalize(last_cursor.path)
+	) {
+		return
+	}
+
+	const line = editor_line(
+		get_statements(editor.document),
+		last_cursor.line - 1
+	)
+
+	reveal_dialogue(
+		editor,
+		line,
+		reported_dialogue(
+			editor.document,
+			line,
+			last_cursor.what,
+			said_range(last_cursor)
+		)
+	)
+}
+
 export async function warp_renpy_to_cursor(
 	rp: AnyProcess,
-	status_bar: StatusBar
+	status_bar: StatusBar,
+	editor = vscode.window.activeTextEditor
 ): Promise<void> {
-	const editor = vscode.window.activeTextEditor
-
 	if (!editor) return
 
 	const filename = editor.document.fileName
@@ -104,22 +192,47 @@ export async function warp_renpy_to_cursor(
 
 	if (!project_root) return
 
+	const target = warp_target(get_statements(editor.document), line)
+
+	if (!target?.warpable || !target.stops) {
+		const refusal_spec = `refused ${file}:${line + 1}`
+
+		if (refusal_spec === last_warps.get(rp.pid)) return
+		last_warps.set(rp.pid, refusal_spec)
+
+		const message = warp_refusal(target, line)
+
+		logger.debug(message)
+		status_bar.notify(`$(circle-slash) ${message}`)
+
+		// the game stays where it is, so show where that is rather than
+		// leaving the two out of step. scrolling on every move would fight the
+		// cursor, so only do it when it first lands somewhere unwarpable
+		if (
+			!refusing.has(rp.pid) &&
+			get_config("followCursorMode") === "Update both"
+		) {
+			reveal_renpy_cursor(rp, editor)
+		}
+
+		refusing.add(rp.pid)
+
+		return
+	}
+
+	refusing.delete(rp.pid)
+
 	const filename_relative = path.relative(
 		path.join(project_root, "game/"),
 		file
 	)
 
-	const warp_spec = `${filename_relative}:${line + 1}`
+	const warp_spec = `${filename_relative}:${target.warp_line + 1}`
 
 	if (warp_spec === last_warps.get(rp.pid)) return // no change
 	last_warps.set(rp.pid, warp_spec)
 
-	if (!rp) {
-		logger.warn("no renpy process found")
-		return
-	}
-
-	await rp.warp_to_line(filename_relative, line + 1)
+	await rp.warp_to_line(filename_relative, target.warp_line + 1)
 	status_bar.notify(`$(debug-line-by-line) Warped to ${warp_spec}`)
 	logger.info("warped to", warp_spec)
 }
@@ -143,6 +256,7 @@ export class FollowCursorService {
 
 		process.once("exit", () => {
 			last_warps.delete(process.pid)
+			refusing.delete(process.pid)
 			own_mark = undefined
 		})
 
@@ -154,9 +268,10 @@ export class FollowCursorService {
 						get_config("followCursorMode") as string
 					) &&
 					event.kind !== vscode.TextEditorSelectionChangeKind.Command &&
-					!is_own_mark(event)
+					!is_own_mark(event) &&
+					!is_at_renpy_cursor(process, event.textEditor)
 				) {
-					await warp_renpy_to_cursor(process, this.status_bar)
+					await warp_renpy_to_cursor(process, this.status_bar, event.textEditor)
 				}
 			}
 		)

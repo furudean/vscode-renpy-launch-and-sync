@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
     following
 - Rename `renpyWarp.showEditorDecorations` to `renpyWarp.showGutterDecorations`
   to reflect what it actually does
+- Determine whether a line is warpable before warping to it
 - Fix a crash when warping or following the cursor in a file that isn't inside a Ren'Py project
 - Fix a crash when linting a project with no SDK path set
 - Detect Visual Studio Code forks such as VSCodium and point Ren'Py at their CLI for the editor file

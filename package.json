@@ -369,7 +369,7 @@
 					"markdownEnumDescriptions": [
 						"Editor will sync with current line in Ren'Py.",
 						"Ren'Py will sync with current line in the editor.",
-						"Try and keep both in sync.\n\n**Note**: Because of how warping works, this can be a bit janky."
+						"Try and keep both in sync."
 					]
 				},
 				"renpyWarp.followCursorBehavior": {

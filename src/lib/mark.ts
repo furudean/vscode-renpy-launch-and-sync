@@ -1,6 +1,6 @@
 import * as vscode from "vscode"
 import { get_config } from "./config"
-import { DialoguePosition, DialogueRange } from "./lex"
+import { DialoguePosition, DialogueRange } from "./dialogue"
 
 function position(place: DialoguePosition): vscode.Position {
 	return new vscode.Position(place.line, place.column)

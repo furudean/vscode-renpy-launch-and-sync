@@ -20,6 +20,19 @@ export interface SaidRange {
 	to: number
 }
 
+export function said_range(message: {
+	said_from?: number
+	said_to?: number
+}): SaidRange | undefined {
+	const { said_from, said_to } = message
+
+	if (typeof said_from !== "number" || typeof said_to !== "number") {
+		return undefined
+	}
+
+	return { from: said_from, to: said_to }
+}
+
 /** the parts of `vscode.TextDocument` this module needs */
 export interface LineSource {
 	lineCount: number

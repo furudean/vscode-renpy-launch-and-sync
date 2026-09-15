@@ -18,7 +18,7 @@ import { find_projects_in_workspaces } from "./path"
 import { FollowCursorService, sync_editor_with_renpy } from "./follow_cursor"
 import { get_executable } from "./sh"
 import { get_sdk_path } from "./sdk"
-import { SaidRange } from "./lex"
+import { said_range } from "./dialogue"
 
 const logger = get_logger()
 
@@ -51,18 +51,6 @@ export interface CurrentLabelSocketMessage extends SocketMessage {
 
 export type AnySocketMessage =
 	CurrentLineSocketMessage | ListLabelsSocketMessage | CurrentLabelSocketMessage
-
-export function said_range(
-	message: CurrentLineSocketMessage
-): SaidRange | undefined {
-	const { said_from, said_to } = message
-
-	if (typeof said_from !== "number" || typeof said_to !== "number") {
-		return undefined
-	}
-
-	return { from: said_from, to: said_to }
-}
 
 export type MessageHandler = (
 	process: AnyProcess,

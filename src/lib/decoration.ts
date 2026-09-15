@@ -2,15 +2,12 @@ import * as vscode from "vscode"
 import { AnyProcess } from "./process"
 import path from "upath"
 import { get_config } from "./config"
-import {
-	AnySocketMessage,
-	CurrentLineSocketMessage,
-	said_range
-} from "./socket"
+import { AnySocketMessage, CurrentLineSocketMessage } from "./socket"
 import { realpath } from "node:fs/promises"
 import { get_logger } from "./log"
-import { find_dialogue_range } from "./lex"
+import { find_dialogue_range, said_range } from "./dialogue"
 import { dialogue_range } from "./mark"
+import { editor_line, get_statements } from "./script"
 
 const logger = get_logger()
 
@@ -104,7 +101,11 @@ export class DecorationService {
 				for (const [, state] of this.state) {
 					if (path.relative(editor_path, state.path) !== "") continue
 
-					const line = state.line - 1
+					// ren'py's line numbering can run behind editor's
+					const line = editor_line(
+						get_statements(editor.document),
+						state.line - 1
+					)
 					const dialogue =
 						state.what === undefined
 							? undefined
