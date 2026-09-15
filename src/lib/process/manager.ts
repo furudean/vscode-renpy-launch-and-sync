@@ -39,10 +39,8 @@ export class ProcessManager {
 		return Array.from(this).at(index)
 	}
 
-	kill_all() {
-		for (const process of this) {
-			process.kill()
-		}
+	async kill_all() {
+		await Promise.all(Array.from(this).map((process) => process.kill()))
 	}
 
 	clear() {

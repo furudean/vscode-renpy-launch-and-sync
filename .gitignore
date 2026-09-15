@@ -7,6 +7,8 @@ node_modules/**
 .DS_Store
 __pycache__
 
+vscode_renpy_warp_*.rpe*
+
 # ren'py output in the e2e fixture project
 test/fixtures/project/game/cache/
 test/fixtures/project/game/saves/

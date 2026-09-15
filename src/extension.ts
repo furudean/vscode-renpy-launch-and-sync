@@ -21,6 +21,7 @@ import {
 	list_downloaded_sdks,
 	uninstall_sdk
 } from "./lib/download"
+import { launch_renpy } from "./lib/launch"
 
 const logger = get_logger()
 
@@ -36,6 +37,12 @@ export interface ExtensionApi {
 		list: () => Promise<string[]>
 		uninstall: (sdk_path: string) => Promise<void>
 	}
+	/**
+	 * launches ren'py without registering the process with `pm`, so its
+	 * socket connection is picked up as an unmanaged/external process. for
+	 * the e2e tests
+	 */
+	launch_unmanaged: () => Promise<AnyProcess | undefined>
 }
 
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
@@ -154,6 +161,9 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 				download_sdk(url, name, context, validate),
 			list: () => list_downloaded_sdks(context),
 			uninstall: (sdk_path) => uninstall_sdk(sdk_path, context)
+		},
+		launch_unmanaged() {
+			return launch_renpy({ context, pm, status_bar, wss, command: [] })
 		}
 	}
 }

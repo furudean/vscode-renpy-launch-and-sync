@@ -458,4 +458,52 @@ suite("renpyWarp", function () {
 			)
 		})
 	})
+
+	suite("unmanaged processes", function () {
+		this.timeout(30_000)
+
+		suiteSetup(async () => {
+			await update_config({
+				renpyExtensionsEnabled: "Enabled",
+				autoConnectExternalProcesses: "Always connect"
+			})
+		})
+
+		suiteTeardown(async () => {
+			await vscode.commands.executeCommand("renpyWarp.killAll")
+
+			await update_config({
+				renpyExtensionsEnabled: "Disabled",
+				autoConnectExternalProcesses: "Never connect"
+			})
+		})
+
+		test("discovers a process that isn't tracked by the process manager", async () => {
+			assert.strictEqual(api.pm.length, 0)
+
+			const launched = await api.launch_unmanaged()
+			assert.ok(launched, "process did not launch")
+
+			await wait_for(() => api.pm.length === 1, "the process to be discovered")
+
+			const discovered = api.pm.at(0)!
+			assert.strictEqual(discovered.pid, launched.pid)
+
+			assert.ok(!("log_file" in discovered), "process was tracked as managed")
+			assert.notStrictEqual(discovered, launched)
+
+			await wait_for(() => discovered.socket_ready, "the rpe to connect", {
+				process: discovered
+			})
+
+			await discovered.kill()
+			await wait_for(
+				() => api.pm.length === 0,
+				"the process to be forgotten on exit"
+			)
+
+			await (launched as ManagedProcess).wait_for_exit()
+			launched.dispose()
+		})
+	})
 })
