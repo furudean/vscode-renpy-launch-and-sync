@@ -26,6 +26,12 @@ async function wait_for(
 	}
 }
 
+async function show_line(file: string, line: number): Promise<void> {
+	const document = await vscode.workspace.openTextDocument(file)
+	const editor = await vscode.window.showTextDocument(document)
+	editor.selection = new vscode.Selection(line, 0, line, 0)
+}
+
 async function update_config(values: Record<string, unknown>): Promise<void> {
 	const config = vscode.workspace.getConfiguration("renpyWarp")
 
@@ -101,6 +107,7 @@ suite("renpyWarp", function () {
 		suiteSetup(async () => {
 			await update_config({
 				renpyExtensionsEnabled: "Enabled",
+				strategy: "Update Window",
 				followCursorOnLaunch: true,
 				followCursorMode: "Update both",
 				followCursorBehavior: "Cursor at line end"
@@ -186,6 +193,27 @@ suite("renpyWarp", function () {
 				"ren'py to follow the editor to script.rpy:22"
 			)
 			assert.strictEqual(cursor()?.relative_path, "script.rpy")
+		})
+
+		test("launches the game warped to a line", async () => {
+			await vscode.commands.executeCommand("renpyWarp.killAll")
+			await wait_for(() => api.pm.length === 0, "the game to die")
+
+			await show_line(script, 19)
+			await vscode.commands.executeCommand("renpyWarp.warpToLine")
+
+			const process = api.pm.at(-1)
+			assert.ok(process, "game did not launch")
+
+			// the launch warp lands before the rpe has connected, so nothing is
+			// reported until the game moves on from script.rpy:20
+			await wait_for(() => process.socket_ready, "the rpe to connect")
+			await process.advance()
+
+			await wait_for(
+				() => process.last_cursor?.line === 22,
+				"ren'py to report script.rpy:22"
+			)
 		})
 	})
 })
