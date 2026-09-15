@@ -6,6 +6,7 @@ import os from "node:os"
 import child_process from "node:child_process"
 import { path_exists, resolve_path } from "./path"
 import fs from "node:fs/promises"
+import { statSync } from "node:fs"
 import find_process from "find-process"
 import p_find from "p-locate"
 import { path_is_sdk } from "./sdk"
@@ -13,11 +14,7 @@ import { path_is_sdk } from "./sdk"
 const logger = get_logger()
 const IS_WINDOWS = os.platform() === "win32"
 
-/**
- * @param executable_str
- * base renpy.sh command
- */
-export function get_version(executable: string[]): {
+export interface RenpyVersion {
 	semver: string
 	major: number
 	minor: number
@@ -25,9 +22,36 @@ export function get_version(executable: string[]): {
 	rest: string | undefined
 	display: string
 	raw: string
-} {
-	const RENPY_VERSION_REGEX =
-		/^(?:Ren'Py )?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\.(?<rest>.*))?\s*$/
+}
+
+const RENPY_VERSION_REGEX =
+	/^(?:Ren'Py )?(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)(?:\.(?<rest>.*))?\s*$/
+
+const version_cache = new Map<
+	string,
+	{ mtime: number; version: RenpyVersion }
+>()
+
+function executable_mtime(executable: string[]): number | undefined {
+	try {
+		return statSync(executable[0]).mtimeMs
+	} catch {
+		return undefined
+	}
+}
+
+/**
+ * @param executable
+ * base renpy.sh command
+ */
+export function get_version(executable: string[]): RenpyVersion {
+	// asking ren'py blocks for a few hundred milliseconds, and the status bar
+	// asks again every time the cursor moves
+	const key = executable.join("\u0000")
+	const mtime = executable_mtime(executable)
+	const cached = version_cache.get(key)
+
+	if (mtime !== undefined && cached?.mtime === mtime) return cached.version
 
 	logger.debug("getting version for", executable)
 
@@ -65,7 +89,7 @@ export function get_version(executable: string[]): {
 		? `${major}.${minor}.${patch}${rest}`
 		: semver
 
-	return {
+	const version: RenpyVersion = {
 		semver,
 		major: Number(major),
 		minor: Number(minor),
@@ -74,6 +98,10 @@ export function get_version(executable: string[]): {
 		display,
 		raw: output
 	}
+
+	if (mtime !== undefined) version_cache.set(key, { mtime, version })
+
+	return version
 }
 
 export function find_project_root(
