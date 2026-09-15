@@ -267,7 +267,7 @@ def socket_producer(websocket):
             "type": "current_line",
             "line": line,
             "path": filename_abs.resolve().as_posix(),
-            "relative_path": relative_filename.resolve().as_posix(),
+            "relative_path": relative_filename.as_posix(),
         }
 
         # the script text places the cursor on the dialogue. ren'py 8.3
