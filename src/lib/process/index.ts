@@ -169,8 +169,11 @@ export class UnmanagedProcess {
 
 	/** Send a message to the Ren'Py process via WebSocket */
 	private async ipc(message: SocketMessage): Promise<void> {
+		if (this.dead) throw new Error(`process ${this.pid} is not running`)
+
 		await this.wait_for_socket(5000).catch((e) => {
 			vscode.window.showErrorMessage("Failed to connect to socket: " + e)
+			throw e
 		})
 
 		return new Promise((resolve, reject) => {

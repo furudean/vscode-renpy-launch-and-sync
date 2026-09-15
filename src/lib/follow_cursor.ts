@@ -257,7 +257,8 @@ export class FollowCursorService {
 		process.once("exit", () => {
 			last_warps.delete(process.pid)
 			refusing.delete(process.pid)
-			own_mark = undefined
+
+			if (this.active_process === process) this.detach()
 		})
 
 		this.text_editor_handle?.dispose()
@@ -271,7 +272,11 @@ export class FollowCursorService {
 					!is_own_mark(event) &&
 					!is_at_renpy_cursor(process, event.textEditor)
 				) {
-					await warp_renpy_to_cursor(process, this.status_bar, event.textEditor)
+					await warp_renpy_to_cursor(
+						process,
+						this.status_bar,
+						event.textEditor
+					).catch(logger.error)
 				}
 			}
 		)
@@ -289,16 +294,23 @@ export class FollowCursorService {
 		}
 	}
 
-	off() {
-		this.enabled = false
-		own_mark = undefined
-
-		if (!this.active_process) return
-
+	private detach() {
 		this.active_process = undefined
+		own_mark = undefined
 
 		this.text_editor_handle?.dispose()
 		this.text_editor_handle = undefined
+	}
+
+	off() {
+		this.enabled = false
+
+		if (!this.active_process) {
+			own_mark = undefined
+			return
+		}
+
+		this.detach()
 
 		this.status_bar.update(() => ({
 			is_follow_cursor: false
