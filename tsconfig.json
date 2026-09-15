@@ -7,6 +7,7 @@
 		"sourceMap": true,
 		"rootDir": "src",
 		"resolveJsonModule": true,
+		"types": ["node", "mocha"],
 		/* let unit tests import the .ts files node's type stripping runs */
 		"allowImportingTsExtensions": true,
 		"rewriteRelativeImportExtensions": true,
