@@ -40,8 +40,10 @@ interface LaunchRenpyOptions {
 	status_bar: StatusBar
 	wss: WarpSocketService
 	extra_environment?: Record<string, string | undefined>
-	/** optional command to pass to process */
-	command?: string
+	/** optional command and its arguments to pass to process */
+	command?: string[]
+	/** project to run. if unset, detected from `file` or the workspace */
+	project_root?: string
 }
 
 /**
@@ -63,7 +65,8 @@ export async function launch_renpy({
 	status_bar,
 	wss,
 	extra_environment,
-	command
+	command,
+	project_root: given_project_root
 }: LaunchRenpyOptions): Promise<ManagedProcess | undefined> {
 	logger.info("launch_renpy:", { file, line })
 
@@ -81,7 +84,7 @@ export async function launch_renpy({
 	) {
 		logger.info("warping in existing window")
 
-		const project_root = find_project_root(file)
+		const project_root = given_project_root ?? find_project_root(file)
 		logger.debug("game root:", project_root)
 
 		if (!project_root) return
@@ -106,9 +109,11 @@ export async function launch_renpy({
 		const nonce = Math.trunc(Math.random() * Number.MAX_SAFE_INTEGER)
 		status_bar.set_process(nonce, "starting")
 
-		const project_root = file
-			? find_project_root(file)
-			: await prompt_projects_in_workspaces(context)
+		const project_root =
+			given_project_root ??
+			(file
+				? find_project_root(file)
+				: await prompt_projects_in_workspaces(context))
 
 		if (!project_root) {
 			status_bar.delete_process(nonce)
@@ -165,7 +170,7 @@ export async function launch_renpy({
 			let cmds = [...executable, project_root]
 
 			if (command) {
-				cmds.push(command)
+				cmds.push(...command)
 			}
 
 			if (file && line !== undefined) {

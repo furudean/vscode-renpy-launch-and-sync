@@ -278,8 +278,17 @@ export class ManagedProcess extends UnmanagedProcess {
 	}
 
 	async kill(): Promise<void> {
+		const exited = this.wait_for_exit()
 		this.process.kill()
-		this.emit("exit")
+		await exited
+	}
+
+	wait_for_exit(): Promise<number | null> {
+		if (this.dead) return Promise.resolve(this.exit_code ?? null)
+
+		return new Promise((resolve) => {
+			this.once("exit", () => resolve(this.exit_code ?? null))
+		})
 	}
 
 	dispose(): void {

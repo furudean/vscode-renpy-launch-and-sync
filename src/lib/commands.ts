@@ -2,7 +2,10 @@ import * as vscode from "vscode"
 import { get_config, set_config, show_file } from "./config"
 import { launch_renpy, launch_sdk } from "./launch"
 import { prompt_configure_extensions } from "./onboard"
-import { find_projects_in_workspaces } from "./path"
+import {
+	find_projects_in_workspaces,
+	prompt_projects_in_workspaces
+} from "./path"
 import {
 	get_sdk_path,
 	prompt_sdk_quick_pick,
@@ -23,6 +26,7 @@ import {
 	warp_target
 } from "./script"
 import path from "upath"
+import fs from "node:fs/promises"
 
 const logger = get_logger()
 
@@ -429,23 +433,35 @@ export function get_commands(
 
 		"renpyWarp.lint": async () => {
 			try {
+				const project_root = await prompt_projects_in_workspaces(context)
+				if (!project_root) return
+
+				const sdk_path = await get_sdk_path()
+				if (!sdk_path) return
+
+				// same place the launcher writes its lint report
+				// https://github.com/renpy/renpy/blob/8646cd3f39dd74a17d52d1b882697b24574078d9/launcher/game/front_page.rpy#L274-L288
+				const lint_txt = path.join(
+					sdk_path,
+					"tmp",
+					path.basename(project_root),
+					"lint.txt"
+				)
+				await fs.mkdir(path.dirname(lint_txt), { recursive: true })
+
 				const p = await launch_renpy({
 					intent: "Linting project...",
-					command: "lint",
+					command: ["lint", lint_txt],
+					project_root,
 					context,
 					pm,
 					status_bar,
 					wss
 				})
+				if (!p) return
 
-				if (p?.project_root) {
-					const sdk_path = await get_sdk_path()
-					if (!sdk_path) return
-
-					// https://github.com/renpy/renpy/blob/8646cd3f39dd74a17d52d1b882697b24574078d9/launcher/game/distribute.rpy#L876-L878
-					const project_name = path.basename(p.project_root)
-					await show_file(path.join(sdk_path, "tmp", project_name, "lint.txt"))
-				}
+				await p.wait_for_exit()
+				await show_file(lint_txt)
 			} catch (error: unknown) {
 				logger.error(error as Error)
 				vscode.window
@@ -466,7 +482,7 @@ export function get_commands(
 			try {
 				await launch_renpy({
 					intent: "Removing persistent data...",
-					command: "rmpersistent",
+					command: ["rmpersistent"],
 					context,
 					pm,
 					status_bar,
@@ -495,7 +511,7 @@ export function get_commands(
 			try {
 				await launch_renpy({
 					intent: "Force recompiling project...",
-					command: "compile",
+					command: ["compile"],
 					context,
 					pm,
 					status_bar,

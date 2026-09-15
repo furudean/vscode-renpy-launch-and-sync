@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
 - Determine whether a line is warpable before warping to it
 - Fix a crash when warping or following the cursor in a file that isn't inside a Ren'Py project
 - Fix a crash when linting a project with no SDK path set
+- Fix `Lint project` opening a stale or missing report. It now writes one and
+  waits for Ren'Py to finish before opening it
 - Detect Visual Studio Code forks such as VSCodium and point Ren'Py at their CLI for the editor file
 - Update dependencies
 

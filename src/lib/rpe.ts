@@ -148,7 +148,7 @@ export async function uninstall_rpes(
 ): Promise<void> {
 	const rpes = await list_rpes(project_root)
 
-	await Promise.all(rpes.map((rpe) => fs.unlink(rpe)))
+	await Promise.all(rpes.map((rpe) => fs.rm(rpe, { force: true })))
 	logger.info("uninstalled rpes:", rpes)
 }
 
