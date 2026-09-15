@@ -47,10 +47,10 @@ interface Segment {
 }
 
 /**
- * String literal, as matched by `Lexer.string`. `"`, `'` and `` ` `` delimit.
+ * The delimiters `Lexer.string` recognises.
  * @see https://github.com/renpy/renpy/blob/8.5.3.26051504/renpy/lexer.py#L976
  */
-const STRING_LITERAL = /(["'`])((?:\\.|(?!\1)[^\\])*)\1/g
+const QUOTES = `"'\``
 
 /**
  * Delimiter opening a monologue block, as matched by `Lexer.triple_string`.
@@ -159,39 +159,136 @@ function match_strength(source: string, what: string): number | undefined {
 	return strength
 }
 
+/** a string literal, along with the script that comes before it */
+interface Literal {
+	/** the text between the quotes, as the script writes it */
+	text: string
+	/** where that text sits, one entry per physical line it covers */
+	segments: Segment[]
+	/** the script between the previous literal and this one */
+	before: string
+}
+
+/** lines to search for the end of a say statement */
+const STATEMENT_LINE_LIMIT = 100
+
+/**
+ * Reads the string literals of the statement starting at `line`.
+ * @see https://github.com/renpy/renpy/blob/8.5.3.26051504/renpy/lexer.py#L976
+ */
+function read_literals(document: LineSource, line: number): Literal[] {
+	const literals: Literal[] = []
+	const last_line = Math.min(
+		line + STATEMENT_LINE_LIMIT,
+		document.lineCount - 1
+	)
+
+	let open: { quote: string; text: string; segments: Segment[] } | undefined
+	let before = ""
+
+	for (let n = line; n <= last_line; n++) {
+		const line_text = document.lineAt(n).text
+		let column = 0
+
+		if (open) {
+			// the lexer joins what it reads across the newline, so the
+			// indentation in front of the rest of the string is not text
+			column = line_text.length - line_text.trimStart().length
+			open.text += "\n"
+			open.segments.push({ line: n, start: column, end: column })
+		}
+
+		while (column < line_text.length) {
+			const char = line_text[column]
+
+			if (open) {
+				const segment = open.segments[open.segments.length - 1]
+
+				if (char === "\\" && column === line_text.length - 1) break
+
+				if (char === "\\") {
+					open.text += line_text.slice(column, column + 2)
+					column += 2
+				} else if (char === open.quote) {
+					segment.end = column
+					literals.push({ text: open.text, segments: open.segments, before })
+					open = undefined
+					before = ""
+					column += 1
+					continue
+				} else {
+					open.text += char
+					column += 1
+				}
+
+				segment.end = Math.min(column, line_text.length)
+				continue
+			}
+
+			if (QUOTES.includes(char)) {
+				open = {
+					quote: char,
+					text: "",
+					segments: [{ line: n, start: column + 1, end: column + 1 }]
+				}
+				column += 1
+				continue
+			}
+
+			before += char
+			column += 1
+		}
+
+		// a closed string leaves nothing to carry on with, save for a backslash
+		// the lexer reads as a line continuation
+		if (!open) {
+			if (!line_text.trimEnd().endsWith("\\")) break
+
+			before += " "
+			continue
+		}
+
+		// the whitespace in front of the newline collapses into it
+		const segment = open.segments[open.segments.length - 1]
+		const kept = line_text.slice(segment.start, segment.end).trimEnd()
+
+		open.text = open.text.slice(
+			0,
+			open.text.length - (segment.end - segment.start - kept.length)
+		)
+		segment.end = segment.start + kept.length
+	}
+
+	return literals
+}
+
 /** finds the dialogue in an ordinary say statement */
 function find_in_literals(
-	line_text: string,
+	document: LineSource,
+	line: number,
 	what: string
-): { start: number; end: number } | undefined {
-	let best: { start: number; end: number; strength: number } | undefined
-	let gap = 0 // where the text between literals starts
+): Segment[] | undefined {
+	let best: { segments: Segment[]; strength: number } | undefined
+	let first = true
 
-	for (const literal of line_text.matchAll(STRING_LITERAL)) {
-		// the first string on the line is always a candidate, since a python
-		// line can call `renpy.say()` with the dialogue as an argument
-		if (gap > 0 && SAY_END.test(line_text.slice(gap, literal.index))) break
+	for (const literal of read_literals(document, line)) {
+		// the first string is always a candidate, since a python line can call
+		// `renpy.say()` with the dialogue as an argument
+		if (!first && SAY_END.test(literal.before)) break
 
-		gap = literal.index + literal[0].length
+		first = false
 
-		const strength = match_strength(literal[2], what)
+		const strength = match_strength(literal.text, what)
 
 		if (strength === undefined) continue
 
 		// later literals win ties, as the say statement's text comes last
 		if (best && strength < best.strength) continue
 
-		best = {
-			start: literal.index + 1,
-			// the closing quote, so the cursor sits after the last character
-			end: literal.index + 1 + literal[2].length,
-			strength
-		}
+		best = { segments: literal.segments, strength }
 	}
 
-	if (!best) return undefined
-
-	return { start: best.start, end: best.end }
+	return best?.segments
 }
 
 interface BlockLine extends Segment {
@@ -313,12 +410,20 @@ function skip_tag(
 /** moves a position past the space a pause leaves in front of the next word */
 function skip_space(
 	document: LineSource,
+	segments: readonly Segment[],
 	at: DialoguePosition
 ): DialoguePosition {
 	const text = document.lineAt(at.line).text
 	let column = at.column
 
 	while (text[column] === " ") column += 1
+
+	const index = segments.findIndex((segment) => segment.line === at.line)
+	const next = segments[index + 1]
+
+	if (next && index !== -1 && column >= segments[index].end) {
+		return { line: next.line, column: next.start }
+	}
 
 	return { line: at.line, column }
 }
@@ -389,12 +494,11 @@ export function find_dialogue_range(
 	if (line < 0 || line >= document.lineCount) return undefined
 
 	const needle = collapse(what)
-	const line_text = document.lineAt(line).text
 	let segments: Segment[] | undefined
 
 	// a monologue block holds the dialogue of every statement it makes, so
 	// there's nothing to find on the line itself
-	if (TRIPLE_QUOTE.test(line_text)) {
+	if (TRIPLE_QUOTE.test(document.lineAt(line).text)) {
 		const block = read_block(document, line)
 
 		for (const delimiter of MONOLOGUE_DELIMITERS) {
@@ -406,9 +510,7 @@ export function find_dialogue_range(
 			}
 		}
 	} else {
-		const literal = find_in_literals(line_text, needle)
-
-		if (literal) segments = [{ line, ...literal }]
+		segments = find_in_literals(document, line, needle)
 	}
 
 	if (!segments) return undefined
@@ -424,9 +526,13 @@ export function find_dialogue_range(
 
 	const from = find_offset(document, segments, said.from)
 	const to = find_offset(document, segments, said.to)
+	const start = from
+		? skip_space(document, segments, skip_tag(document, from))
+		: whole.start
+	const end = to ? skip_tag(document, to) : whole.end
 
-	return {
-		start: from ? skip_space(document, skip_tag(document, from)) : whole.start,
-		end: to ? skip_tag(document, to) : whole.end
-	}
+	// a pause at the very end says nothing, and there's no drawing nothing
+	if (start.line === end.line && start.column >= end.column) return whole
+
+	return { start, end }
 }

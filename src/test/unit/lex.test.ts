@@ -126,6 +126,31 @@ describe("say statements", () => {
 	test("gives up on a line past the end of the file", () => {
 		assert.equal(cursor(`    e "hi"`, 9, "hi"), undefined)
 	})
+
+	test("follows a string onto the lines below it", () => {
+		const script = [`    e "Hello,`, `        world!"`].join("\n")
+
+		assert.equal(
+			selection(script, 0, "Hello, world!"),
+			[`    e "[Hello,`, `        world!]"`].join("\n")
+		)
+	})
+
+	test("follows a string past an escaped newline", () => {
+		const script = [`    e "Hello, \\`, `        world!"`].join("\n")
+
+		assert.equal(
+			selection(script, 0, "Hello, world!"),
+			[`    e "[Hello, \\`, `        world!]"`].join("\n")
+		)
+	})
+
+	test("leaves a string on the next line alone", () => {
+		assert.equal(
+			cursor([`    e "Hello"`, `    "Hello"`].join("\n"), 0, "Hello"),
+			`    e "Hello|"`
+		)
+	})
 })
 
 describe("text ren'py has already processed", () => {
@@ -325,6 +350,32 @@ describe("dialogue pauses", () => {
 		assert.equal(
 			selection(`    e "Hello, world!"`, 0, "Hello, world!"),
 			`    e "[Hello, world!]"`
+		)
+	})
+
+	test("selects the whole dialogue when a pause ends it", () => {
+		const what = "Hello{w}"
+
+		assert.equal(
+			selection(`    e "Hello{w}"`, 0, what, { from: 5, to: what.length }),
+			`    e "[Hello{w}]"`
+		)
+	})
+
+	test("selects the stretch being said across lines", () => {
+		const script = [`    e "Hi{w}`, `        there."`].join("\n")
+		const what = "Hi{w} there."
+
+		assert.equal(
+			selection(script, 0, what, { from: 0, to: what.indexOf("{w}") }),
+			`    e "[Hi{w}]`
+		)
+		assert.equal(
+			selection(script, 0, what, {
+				from: what.indexOf("{w}"),
+				to: what.length
+			}),
+			`        [there.]"`
 		)
 	})
 
