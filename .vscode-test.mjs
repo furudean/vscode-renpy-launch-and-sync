@@ -5,6 +5,7 @@ import { access, readFile } from "node:fs/promises"
 import { pipeline } from "node:stream/promises"
 import { Readable } from "node:stream"
 import { join } from "node:path"
+import { tmpdir } from "node:os"
 
 // the e2e tests open this project as their workspace
 const workspace = join(import.meta.dirname, "test", "fixtures", "project")
@@ -63,13 +64,10 @@ async function ensure_sdk_archive() {
 
 await ensure_sdk_archive()
 
-// the user data dir lives with the other test artifacts so the downloaded sdk
-// survives between runs. the settings file is rewritten each time. that keeps
-// the test window quiet (copilot and friends are built in now, so they are
-// turned off through settings and by disabling them outright) and puts every
-// renpyWarp setting back to a known baseline so nothing a previous run
-// changed leaks into this one
-const user_data_dir = join(import.meta.dirname, ".vscode-test", "user-data")
+const user_data_dir = join(
+	process.env.RUNNER_TEMP ?? tmpdir(),
+	"renpy-warp-user-data"
+)
 mkdirSync(join(user_data_dir, "User"), { recursive: true })
 writeFileSync(
 	join(user_data_dir, "User", "settings.json"),
@@ -80,10 +78,13 @@ writeFileSync(
 		"extensions.autoUpdate": false,
 		"extensions.autoCheckUpdates": false,
 		"workbench.startupEditor": "none",
-		// the fixture project sits inside this repo, and git has no business
-		// in the test window
 		"git.enabled": false,
 		"git.autofetch": false,
+		"security.workspace.trust.enabled": false,
+		"task.autoDetect": "off",
+		"extensions.ignoreRecommendations": true,
+		"workbench.tips.enabled": false,
+		"update.showReleaseNotes": false,
 
 		"renpyWarp.strategy": "Update Window",
 		"renpyWarp.renpyExtensionsEnabled": "Disabled",
@@ -108,7 +109,12 @@ export default defineConfig({
 		"--disable-extension=vscode.git-base",
 		"--disable-extension=vscode.github",
 		"--disable-extension=TypeScriptTeam.jsts-chat-features",
+		"--disable-extension=vscode.github-authentication",
+		"--disable-extension=vscode.microsoft-authentication",
 		"--disable-telemetry",
-		"--disable-updates"
+		"--disable-updates",
+		"--disable-crash-reporter",
+		"--disable-workspace-trust",
+		"--sync=off"
 	]
 })
