@@ -7,8 +7,8 @@ import {
 	parse_statements,
 	warp_target,
 	type Statement
-} from "../../lib/script.ts"
-import type { LineSource } from "../../lib/dialogue.ts"
+} from "./script.ts"
+import type { LineSource } from "./dialogue.ts"
 
 function read(script: string): LineSource {
 	const lines = script.split("\n")

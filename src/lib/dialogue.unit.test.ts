@@ -4,7 +4,7 @@ import {
 	find_dialogue_range,
 	type LineSource,
 	type SaidRange
-} from "../../lib/dialogue.ts"
+} from "./dialogue.ts"
 
 function read(script: string): { document: LineSource; lines: string[] } {
 	const lines = script.split("\n")

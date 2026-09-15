@@ -44,7 +44,7 @@
 		"check-types": "tsc --noEmit",
 		"lint": "npm run check-types && eslint && prettier --check .",
 		"format": "prettier --write .",
-		"test:unit": "node --test \"src/test/unit/*.test.ts\"",
+		"test:unit": "node --test \"src/**/*.unit.test.ts\"",
 		"pretest:extension": "npm run compile-tests && node esbuild.js",
 		"test:extension": "vscode-test",
 		"test": "npm run test:unit && npm run test:extension"
