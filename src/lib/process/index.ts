@@ -217,6 +217,13 @@ export class UnmanagedProcess {
 		})
 	}
 
+	/** ends the current interaction, so the game moves on to its next statement */
+	async advance() {
+		return this.ipc({
+			type: "advance"
+		})
+	}
+
 	async jump_to_label(label: string) {
 		return this.ipc({
 			type: "jump_to_label",

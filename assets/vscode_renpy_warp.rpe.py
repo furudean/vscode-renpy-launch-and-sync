@@ -225,6 +225,9 @@ def socket_listener(websocket):
             """)
             py_exec(script)
 
+        elif payload["type"] == "advance":
+            py_exec("renpy.end_interaction(True)")
+
         elif payload["type"] == "jump_to_label":
             label = payload["label"]
 

@@ -19,7 +19,11 @@ import { AnyProcess } from "./lib/process"
 
 const logger = get_logger()
 
-export function activate(context: vscode.ExtensionContext) {
+export interface ExtensionApi {
+	pm: ProcessManager
+}
+
+export function activate(context: vscode.ExtensionContext): ExtensionApi {
 	// migrate settings from version<=1.5.0 where renpyExtensionsEnabled was a boolean
 	const conf = get_configuration_object()
 	if (
@@ -127,6 +131,8 @@ export function activate(context: vscode.ExtensionContext) {
 			})
 		}
 	}
+
+	return { pm }
 }
 
 export function deactivate() {
