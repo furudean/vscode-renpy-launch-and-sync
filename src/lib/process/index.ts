@@ -240,6 +240,7 @@ interface ManagedProcessOptions extends Omit<UnmanagedProcessOptions, "pid"> {
 export class ManagedProcess extends UnmanagedProcess {
 	private process: child_process.ChildProcess
 	private tail: TailFile
+	log_file: string
 	output_channel?: vscode.OutputChannel
 	exit_code?: number | null
 
@@ -256,6 +257,7 @@ export class ManagedProcess extends UnmanagedProcess {
 
 		this.process = process
 		this.project_root = project_root
+		this.log_file = log_file
 
 		this.output_channel = vscode.window.createOutputChannel(
 			`Ren'Py Launch and Sync - Process Output (${this.process.pid})`
@@ -270,7 +272,11 @@ export class ManagedProcess extends UnmanagedProcess {
 		this.tail.start()
 
 		this.tail.pipe(split2()).on("data", (line: string) => {
-			this.output_channel!.appendLine(line)
+			try {
+				this.output_channel?.appendLine(line)
+			} catch {
+				// nothing left to log to
+			}
 		})
 
 		this.process.on("close", async (code) => {

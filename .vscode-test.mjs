@@ -7,8 +7,6 @@ import { ensure_sdk } from "./scripts/renpy_sdk.mjs"
 // the sdk ships the_question, which the e2e tests open as their workspace
 const sdk_path = await ensure_sdk()
 
-// keep the test window quiet. copilot and friends are built in now, so they
-// are turned off through settings and by disabling them outright
 const user_data_dir = join(tmpdir(), "vscode-renpy-warp-test")
 mkdirSync(join(user_data_dir, "User"), { recursive: true })
 writeFileSync(
@@ -19,7 +17,17 @@ writeFileSync(
 		"update.mode": "none",
 		"extensions.autoUpdate": false,
 		"extensions.autoCheckUpdates": false,
-		"workbench.startupEditor": "none"
+		"workbench.startupEditor": "none",
+
+		"renpyWarp.sdkPath": sdk_path,
+		"renpyWarp.strategy": "Update Window",
+		"renpyWarp.renpyExtensionsEnabled": "Disabled",
+		"renpyWarp.autoConnectExternalProcesses": "Never connect",
+		"renpyWarp.followCursorMode": "Ren'Py updates Visual Studio Code",
+		"renpyWarp.followCursorBehavior": "Just reveal",
+		"renpyWarp.followCursorOnLaunch": false,
+		"renpyWarp.setAutoReloadOnSave": false,
+		"renpyWarp.processEnvironment": { RENPY_DISABLE_SOUND: "1" }
 	})
 )
 
