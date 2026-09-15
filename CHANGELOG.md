@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-## Unreleased
+## 4.0.0 - 2026-09-15
 
 - Rewrite of cursor tracking. Now places the a highlight on the current dialogue
   section by default.
