@@ -9,6 +9,8 @@ const sdk_path = process.env.RENPY_SDK_PATH as string
 const project_root = path.join(sdk_path, "the_question")
 const script = path.join(project_root, "game", "script.rpy")
 
+const fs_path = (file: string) => vscode.Uri.file(file).fsPath
+
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 
 async function wait_for(
@@ -65,7 +67,7 @@ suite("renpyWarp", function () {
 	test("activates in a ren'py workspace", () => {
 		assert.strictEqual(
 			vscode.workspace.workspaceFolders?.[0].uri.fsPath,
-			project_root
+			fs_path(project_root)
 		)
 		assert.ok(api.pm, "extension api not exported")
 	})
@@ -83,7 +85,7 @@ suite("renpyWarp", function () {
 		await vscode.commands.executeCommand("renpyWarp.lint")
 
 		const document = vscode.window.activeTextEditor?.document
-		assert.strictEqual(document?.uri.fsPath, lint_txt)
+		assert.strictEqual(document?.uri.fsPath, fs_path(lint_txt))
 		assert.match(document.getText(), /Lint is not a substitute/)
 	})
 
@@ -142,7 +144,8 @@ suite("renpyWarp", function () {
 			)
 			await wait_for(
 				() =>
-					vscode.window.activeTextEditor?.document.uri.fsPath === script &&
+					vscode.window.activeTextEditor?.document.uri.fsPath ===
+						fs_path(script) &&
 					vscode.window.activeTextEditor.selection.active.line === 21,
 				"the editor to follow ren'py"
 			)
