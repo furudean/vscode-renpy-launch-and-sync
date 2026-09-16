@@ -62,6 +62,8 @@ export interface RenpyDebugConfiguration extends vscode.DebugConfiguration {
 	_intent?: string
 	/** sdk path, resolved from `sdk` */
 	_sdk_path?: string
+	/** identifies the session `start_renpy` is waiting on, among concurrent launches */
+	_launch_nonce?: number
 }
 
 interface DebugSessionDeps {
@@ -115,13 +117,22 @@ export class RenpyDebugConfigurationProvider
 	private resolve_attach(
 		config: RenpyDebugConfiguration
 	): RenpyDebugConfiguration | undefined {
-		if (
-			typeof config.pid !== "number" ||
-			this.pm.find_by_pid(config.pid) === undefined
-		) {
+		const rpp =
+			typeof config.pid === "number"
+				? this.pm.find_by_pid(config.pid)
+				: undefined
+
+		if (!rpp) {
 			vscode.window.showErrorMessage(
 				`No tracked Ren'Py process with pid ${config.pid}`,
 				"OK"
+			)
+			return undefined
+		}
+
+		if (rpp.debug_session_id !== undefined) {
+			logger.warn(
+				`Ren'Py process with pid ${config.pid} already has an active debug session`
 			)
 			return undefined
 		}
@@ -150,6 +161,10 @@ export class RenpyDebugConfigurationProvider
 
 		let project = config.project
 		let file = config.file
+
+		if (project && !path.isAbsolute(project)) {
+			project = path.resolve(folder?.uri.fsPath ?? "", project)
+		}
 
 		if (file && !path.isAbsolute(file)) {
 			file = path.resolve(project ?? folder?.uri.fsPath ?? "", file)
@@ -286,6 +301,8 @@ export class RenpyDebugSession extends DebugSession {
 	private rpp?: AnyProcess
 	private request: "launch" | "attach" = "launch"
 	private unbind: (() => void)[] = []
+	/** set once `rpp` has told us it's gone, real death or a manager clear */
+	private rpp_exited = false
 
 	private can_step = false
 
@@ -404,7 +421,13 @@ export class RenpyDebugSession extends DebugSession {
 			} else if (this.request === "launch") {
 				// a restart disconnects before launching again, so killing here
 				// is what leaves the replacement window as the only one
-				if (args.terminateDebuggee !== false) await rpp.kill()
+				const should_terminate =
+					args.terminateDebuggee === true ||
+					args.terminateDebuggee === undefined
+
+				if (!this.rpp_exited && should_terminate) {
+					await rpp.kill()
+				}
 			} else if (args.restart) {
 				// vscode attaches again with the same pid, so the process only
 				// has to come free of this session for that bind to succeed
@@ -541,12 +564,16 @@ export class RenpyDebugSession extends DebugSession {
 			this.set_can_step(is_gameplay)
 
 			if (is_plumbing) return
+
+			this.console(`label ${message.label}`)
 		}
 
 		rpp.on("socketMessage", on_message)
 		this.unbind.push(() => rpp.off("socketMessage", on_message))
 
 		const on_exit = () => {
+			this.rpp_exited = true
+
 			if (rpp instanceof ManagedProcess) {
 				this.console(`process exited with code ${rpp.exit_code}`)
 				this.sendEvent(new ExitedEvent(rpp.exit_code ?? 0))
@@ -644,6 +671,8 @@ export async function start_renpy({
 		? vscode.workspace.getWorkspaceFolder(vscode.Uri.file(project_root))
 		: vscode.workspace.workspaceFolders?.[0]
 
+	const launch_nonce = Math.trunc(Math.random() * Number.MAX_SAFE_INTEGER)
+
 	const configuration: RenpyDebugConfiguration = {
 		type: DEBUG_TYPE,
 		request: "launch",
@@ -652,14 +681,29 @@ export async function start_renpy({
 		file,
 		_warp_line: line,
 		_intent: intent,
+		_launch_nonce: launch_nonce,
 		env
 	}
+
+	let session_id: string | undefined
+	const on_start_session = (session: vscode.DebugSession) => {
+		if (session.configuration._launch_nonce === launch_nonce) {
+			session_id = session.id
+		}
+	}
+	const start_session_sub =
+		vscode.debug.onDidStartDebugSession(on_start_session)
 
 	// the session binds the process during its launch request, so listening
 	// here is what hands the process back to the command that asked for it
 	let started: AnyProcess | undefined
 	const on_attach = (rpp: AnyProcess) => {
-		started = rpp
+		if (
+			rpp.debug_session_id !== undefined &&
+			rpp.debug_session_id === session_id
+		) {
+			started = rpp
+		}
 	}
 	pm.on("attach", on_attach)
 
@@ -672,13 +716,14 @@ export async function start_renpy({
 		if (!ok) return undefined
 	} finally {
 		pm.off("attach", on_attach)
+		start_session_sub.dispose()
 	}
 
 	return started
 }
 
 /** gives a process a debug session of its own unless it already has one */
-async function attach_to(rpp: AnyProcess): Promise<void> {
+async function attach_to(rpp: AnyProcess, pm: ProcessManager): Promise<void> {
 	const folder = vscode.workspace.getWorkspaceFolder(
 		vscode.Uri.file(rpp.project_root)
 	)
@@ -699,12 +744,24 @@ async function attach_to(rpp: AnyProcess): Promise<void> {
 		)
 
 		if (!started) {
-			// a tracked process is meant to always have a session, so this is
-			// worth saying out loud rather than leaving to be noticed
+			// a tracked process is meant to always have a session, so leaving
+			// it in `pm` unbound would strand it: never picked up by a debug
+			// session, yet still shown as live by the status bar and follow
+			// cursor. drop it instead and say so out loud
 			logger.error(`could not start a debug session for pid ${rpp.pid}`)
+			vscode.window.showErrorMessage(
+				`Could not start a debug session for Ren'Py process ${rpp.pid}. It has been dropped from tracking.`,
+				"OK"
+			)
+			pm.remove_process(rpp)
 		}
 	} catch (error) {
 		logger.error(`could not start a debug session for pid ${rpp.pid}`, error)
+		vscode.window.showErrorMessage(
+			`Could not start a debug session for Ren'Py process ${rpp.pid}. It has been dropped from tracking.`,
+			"OK"
+		)
+		pm.remove_process(rpp)
 	}
 }
 
@@ -724,7 +781,7 @@ export function register_debugger(
 	const on_attach = (rpp: AnyProcess) => {
 		if (rpp.debug_session_id) return
 
-		attach_to(rpp)
+		attach_to(rpp, pm)
 	}
 	pm.on("attach", on_attach)
 

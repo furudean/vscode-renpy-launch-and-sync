@@ -425,6 +425,8 @@ export function get_commands(
 		},
 
 		"renpyWarp.lint": async () => {
+			let p: Awaited<ReturnType<typeof launch_renpy>>
+
 			try {
 				const project_root = await prompt_projects_in_workspaces(context)
 				if (!project_root) return
@@ -442,7 +444,7 @@ export function get_commands(
 				)
 				await fs.mkdir(path.dirname(lint_txt), { recursive: true })
 
-				const p = await launch_renpy({
+				p = await launch_renpy({
 					intent: "Linting project...",
 					command: ["lint", lint_txt],
 					register: false,
@@ -464,16 +466,18 @@ export function get_commands(
 						"Open Output"
 					)
 					.then((selection) => {
-						if (selection === "Open Output") {
-							logger.show()
-						}
+						if (selection !== "Open Output") return
+						if (p) show_file(p.log_file)
+						else logger.show()
 					})
 			}
 		},
 
 		"renpyWarp.rmpersistent": async () => {
+			let p: Awaited<ReturnType<typeof launch_renpy>>
+
 			try {
-				await launch_renpy({
+				p = await launch_renpy({
 					intent: "Removing persistent data...",
 					command: ["rmpersistent"],
 					register: false,
@@ -494,15 +498,17 @@ export function get_commands(
 						"Open Output"
 					)
 					.then((selection) => {
-						if (selection === "Open Output") {
-							logger.show()
-						}
+						if (selection !== "Open Output") return
+						if (p) show_file(p.log_file)
+						else logger.show()
 					})
 			}
 		},
 		"renpyWarp.forceRecompile": async () => {
+			let p: Awaited<ReturnType<typeof launch_renpy>>
+
 			try {
-				await launch_renpy({
+				p = await launch_renpy({
 					intent: "Force recompiling project...",
 					command: ["compile"],
 					register: false,
@@ -519,9 +525,9 @@ export function get_commands(
 						"Open Output"
 					)
 					.then((selection) => {
-						if (selection === "Open Output") {
-							logger.show()
-						}
+						if (selection !== "Open Output") return
+						if (p) show_file(p.log_file)
+						else logger.show()
 					})
 			}
 		},
