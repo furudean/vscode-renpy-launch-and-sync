@@ -13,7 +13,11 @@ import {
 import { DebugProtocol } from "@vscode/debugprotocol"
 
 import { AnyProcess, ManagedProcess, ProcessManager } from "./process"
-import { AnySocketMessage, WarpSocketService } from "./socket"
+import {
+	AnySocketMessage,
+	CurrentLineSocketMessage,
+	WarpSocketService
+} from "./socket"
 import { StatusBar } from "./status_bar"
 import { launch_renpy, warp_open_window } from "./launch"
 import { find_project_root } from "./sh"
@@ -330,7 +334,8 @@ export class RenpyDebugSession extends DebugSession {
 			supportsConfigurationDoneRequest: true,
 			supportsTerminateRequest: true,
 			supportTerminateDebuggee: true,
-			supportsStepBack: true
+			supportsStepBack: true,
+			supportsRestartRequest: true
 		}
 
 		this.sendResponse(response)
@@ -347,7 +352,36 @@ export class RenpyDebugSession extends DebugSession {
 		response: DebugProtocol.LaunchResponse
 	): Promise<void> {
 		this.request = "launch"
+		await this.launch(response)
+	}
 
+	protected async restartRequest(
+		response: DebugProtocol.RestartResponse
+	): Promise<void> {
+		if (this.request !== "launch") {
+			this.sendResponse(response)
+			return
+		}
+
+		const old_rpp = this.rpp
+		const last_cursor = old_rpp?.last_cursor
+
+		if (old_rpp) {
+			this.cleanup()
+			this.rpp = undefined
+			this.rpp_exited = false
+			this.can_step = false
+
+			await old_rpp.kill().catch((error) => logger.error(error as Error))
+		}
+
+		await this.launch(response, last_cursor)
+	}
+
+	private async launch(
+		response: DebugProtocol.Response,
+		warp_to?: CurrentLineSocketMessage
+	): Promise<void> {
 		const config = this.session.configuration as RenpyDebugConfiguration
 		let rpp: ManagedProcess | undefined
 
@@ -359,8 +393,10 @@ export class RenpyDebugSession extends DebugSession {
 				wss: this.wss,
 				project_root: config.project,
 				sdk_path: config._sdk_path,
-				file: config.file,
-				line: config._warp_line,
+				// a restart with somewhere to come back to takes precedence over
+				// the configuration's original target
+				file: warp_to?.path ?? config.file,
+				line: warp_to ? warp_to.line - 1 : config._warp_line,
 				command: config.args?.length ? config.args : undefined,
 				extra_environment: config.env,
 				debug_session_id: this.session.id
