@@ -49,8 +49,18 @@ export interface CurrentLabelSocketMessage extends SocketMessage {
 	label: string
 }
 
+export interface ConsoleResultSocketMessage extends SocketMessage {
+	type: "console_result"
+	nonce: number
+	text: string
+	is_error: boolean
+}
+
 export type AnySocketMessage =
-	CurrentLineSocketMessage | ListLabelsSocketMessage | CurrentLabelSocketMessage
+	| CurrentLineSocketMessage
+	| ListLabelsSocketMessage
+	| CurrentLabelSocketMessage
+	| ConsoleResultSocketMessage
 
 /** connection details a client presents during the websocket handshake */
 export interface SocketClient {

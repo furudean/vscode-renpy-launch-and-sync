@@ -177,7 +177,7 @@ export class UnmanagedProcess {
 		if (this.dead) throw new Error(`process ${this.pid} is not running`)
 
 		await this.wait_for_socket(5000).catch((e) => {
-			vscode.window.showErrorMessage("Failed to connect to socket: " + e)
+			logger.error("failed to connect to socket:", e)
 			throw e
 		})
 
@@ -248,6 +248,36 @@ export class UnmanagedProcess {
 			type: "jump_to_label",
 			label
 		})
+	}
+
+	private console_nonce = 0
+
+	async console(code: string): Promise<{ text: string; is_error: boolean }> {
+		const nonce = ++this.console_nonce
+
+		const result = new Promise<{ text: string; is_error: boolean }>(
+			(resolve, reject) => {
+				const timeout = setTimeout(() => {
+					this.off("socketMessage", on_message)
+					reject(new Error("timed out waiting for console result"))
+				}, 5000)
+
+				const on_message = (message: AnySocketMessage) => {
+					if (message.type !== "console_result" || message.nonce !== nonce)
+						return
+
+					clearTimeout(timeout)
+					this.off("socketMessage", on_message)
+					resolve({ text: message.text, is_error: message.is_error })
+				}
+
+				this.on("socketMessage", on_message)
+			}
+		)
+
+		await this.ipc({ type: "console", nonce, code })
+
+		return result
 	}
 }
 

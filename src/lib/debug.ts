@@ -3,6 +3,7 @@ import path from "upath"
 import {
 	ContinuedEvent,
 	DebugSession,
+	ErrorDestination,
 	ExitedEvent,
 	InitializedEvent,
 	OutputEvent,
@@ -493,12 +494,47 @@ export class RenpyDebugSession extends DebugSession {
 		this.sendResponse(response)
 	}
 
-	protected evaluateRequest(response: DebugProtocol.EvaluateResponse): void {
-		this.sendErrorResponse(
-			response,
-			1003,
-			"The Debug Console cannot evaluate expressions in Ren'Py"
-		)
+	protected async evaluateRequest(
+		response: DebugProtocol.EvaluateResponse,
+		args: DebugProtocol.EvaluateArguments
+	): Promise<void> {
+		if (args.context !== "repl" || !this.rpp || this.rpp_exited) {
+			this.sendErrorResponse(
+				response,
+				1003,
+				"Not connected to process",
+				undefined,
+				ErrorDestination.Telemetry // telemetry destination does not nag user when errors happen
+			)
+			return
+		}
+
+		try {
+			const { text, is_error } = await this.rpp.console(args.expression)
+
+			if (is_error) {
+				this.sendErrorResponse(
+					response,
+					1006,
+					text,
+					undefined,
+					ErrorDestination.Telemetry
+				)
+				return
+			}
+
+			response.body = { result: text, variablesReference: 0 }
+			this.sendResponse(response)
+		} catch (error) {
+			logger.error(error as Error)
+			this.sendErrorResponse(
+				response,
+				1006,
+				String(error),
+				undefined,
+				ErrorDestination.Telemetry
+			)
+		}
 	}
 
 	protected pauseRequest(response: DebugProtocol.PauseResponse): void {
@@ -569,6 +605,7 @@ export class RenpyDebugSession extends DebugSession {
 		rpp.debug_session_id = this.session.id
 
 		this.console(`Ren'Py pid ${rpp.pid} (${rpp.project_root})`)
+		this.console("Connected to Ren'Py console. Type help for help.")
 
 		if (rpp instanceof ManagedProcess) {
 			// the console is the only place process output goes, so replay what

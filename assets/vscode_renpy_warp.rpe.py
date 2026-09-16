@@ -21,6 +21,7 @@ import json
 import functools
 import re
 import os
+import traceback
 from pathlib import Path
 import logging
 
@@ -201,6 +202,80 @@ def py_exec(text):
     invoke(functools.partial(renpy.python.py_exec, text))
 
 
+def console_lex(code):
+    if "\n" in code:
+        return None, code
+
+    block = [("<console>", 1, code, [])]
+    l = renpy.parser.Lexer(block)
+    l.advance()
+
+    return l.word(), l.rest()
+
+
+def console_jump(rest):
+    """
+    custom implementation of 'jump <label>' that jumps out of context if needed
+    """
+    label = rest.strip()
+
+    if not label:
+        return "Label name must not be empty.", True
+    if not renpy.exports.has_label(label):
+        return f"Label {label!r} not found.", True
+
+    script = textwrap.dedent(f"""
+        if renpy.context_nesting_level() > 0:
+            renpy.jump_out_of_context('{label}')
+        else:
+            renpy.jump('{label}')
+    """)
+    renpy.python.py_exec(script)
+
+    return "", False
+
+
+def console_send(nonce, code, websocket):
+    try:
+        import store._console as _console_store  # type: ignore
+
+        console = getattr(_console_store, "console", None)
+
+        if console is None:
+            text, is_error = "Developer console is not available.", True
+        else:
+            command_word, rest = console_lex(code)
+
+            if command_word == "jump":
+                text, is_error = console_jump(rest)
+            elif command_word == "exit":
+                text, is_error = "There's no interactive console session here to exit.", False
+            else:
+                console.run([code])
+                he = console.history[-1]
+                text, is_error = he.result or "", bool(
+                    getattr(he, "is_error", False))
+
+            renpy.exports.restart_interaction()
+    except renpy.game.CONTROL_EXCEPTIONS:
+        socket_send({
+            "type": "console_result",
+            "nonce": nonce,
+            "text": "",
+            "is_error": False,
+        }, websocket)
+        raise
+    except Exception:  # noqa: BLE001
+        text, is_error = traceback.format_exc(), True
+
+    socket_send({
+        "type": "console_result",
+        "nonce": nonce,
+        "text": text,
+        "is_error": is_error,
+    }, websocket)
+
+
 _resume_context = None
 
 
@@ -251,6 +326,10 @@ def socket_listener(websocket):
 
         elif payload["type"] == "next_checkpoint":
             invoke(begin_next_checkpoint)
+
+        elif payload["type"] == "console":
+            invoke(functools.partial(
+                console_send, payload.get("nonce"), payload["code"], websocket))
 
         elif payload["type"] == "jump_to_label":
             label = payload["label"]
