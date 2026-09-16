@@ -21,7 +21,9 @@
 	},
 	"activationEvents": [
 		"onLanguage:renpy",
-		"workspaceContains:**/*.rpy"
+		"workspaceContains:**/*.rpy",
+		"onDebugResolve:renpyWarp",
+		"onDebugDynamicConfigurations:renpyWarp"
 	],
 	"type": "commonjs",
 	"main": "./dist/extension.js",
@@ -76,6 +78,8 @@
 	"dependencies": {
 		"@logdna/tail-file": "^4.0.2",
 		"@microsoft/vscode-file-downloader-api": "^1.0.1",
+		"@vscode/debugadapter": "^1.68.0",
+		"@vscode/debugprotocol": "^1.68.0",
 		"adm-zip": "^0.6.1",
 		"env-paths": "^4.0.0",
 		"extract-zip": "^2.0.1",
@@ -96,6 +100,96 @@
 		"ws": "^8.18.0"
 	},
 	"contributes": {
+		"debuggers": [
+			{
+				"type": "renpyWarp",
+				"label": "Ren'Py Launch and Sync",
+				"languages": [
+					"renpy"
+				],
+				"configurationAttributes": {
+					"launch": {
+						"properties": {
+							"project": {
+								"type": "string",
+								"description": "Path to the Ren'Py project root (the folder containing game/). Detected from `file` or prompted for when omitted."
+							},
+							"file": {
+								"type": "string",
+								"description": "Script to open at. Absolute, or relative to `project`."
+							},
+							"line": {
+								"type": [
+									"number",
+									"string"
+								],
+								"description": "1-indexed line in `file` to warp to. When omitted with `file` set, the first playable statement in the file is used."
+							},
+							"args": {
+								"type": "array",
+								"items": {
+									"type": "string"
+								},
+								"default": [],
+								"description": "Extra arguments appended to the Ren'Py command line."
+							},
+							"env": {
+								"type": "object",
+								"additionalProperties": {
+									"type": "string"
+								},
+								"default": {},
+								"description": "Extra environment variables for the Ren'Py process. Merged after renpyWarp.processEnvironment."
+							},
+							"sdk": {
+								"type": "string",
+								"description": "Ren'Py SDK to run with, overriding renpyWarp.sdkPath. Either a version the extension manages, such as \"8.3.7\", which is offered for download when it isn't installed, or a path to an SDK directory."
+							}
+						}
+					},
+					"attach": {
+						"required": [
+							"pid"
+						],
+						"properties": {
+							"pid": {
+								"type": "number",
+								"description": "PID of a Ren'Py process the extension is already tracking."
+							}
+						}
+					}
+				},
+				"initialConfigurations": [
+					{
+						"type": "renpyWarp",
+						"request": "launch",
+						"name": "Launch Ren'Py project"
+					}
+				],
+				"configurationSnippets": [
+					{
+						"label": "Ren'Py Launch and Sync: Launch project",
+						"description": "Start the Ren'Py project in the workspace",
+						"body": {
+							"type": "renpyWarp",
+							"request": "launch",
+							"name": "Launch Ren'Py project"
+						}
+					},
+					{
+						"label": "Ren'Py Launch and Sync: Open at current line",
+						"description": "Start Ren'Py warped to the line under the cursor",
+						"body": {
+							"type": "renpyWarp",
+							"request": "launch",
+							"name": "Open Ren'Py at current line",
+							"file": "^\"\\${file}\"",
+							"line": "^\"\\${lineNumber}\""
+						}
+					}
+				]
+			}
+		],
 		"colors": [
 			{
 				"id": "renpyWarp.dialogueBackgroundDecoration",

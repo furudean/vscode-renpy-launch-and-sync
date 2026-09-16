@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import { get_config, set_config, show_file } from "./config"
 import { launch_renpy, launch_sdk } from "./launch"
+import { start_renpy } from "./debug"
 import { prompt_configure_extensions } from "./onboard"
 import {
 	find_projects_in_workspaces,
@@ -43,7 +44,7 @@ export function get_commands(
 	> = {
 		"renpyWarp.launch": async () => {
 			try {
-				await launch_renpy({ context, pm, status_bar, wss })
+				await start_renpy({ pm, status_bar })
 			} catch (error: unknown) {
 				logger.error(error as Error)
 			}
@@ -64,14 +65,12 @@ export function get_commands(
 			}
 
 			try {
-				await launch_renpy({
+				await start_renpy({
 					intent: "Starting Ren'Py at line...",
 					file: editor.document.uri.fsPath,
 					line: target.warp_line,
-					context,
 					pm,
-					status_bar,
-					wss
+					status_bar
 				})
 			} catch (error: unknown) {
 				logger.error(error as Error)
@@ -99,14 +98,12 @@ export function get_commands(
 			}
 
 			try {
-				await launch_renpy({
+				await start_renpy({
 					intent: "Starting Ren'Py at file...",
 					file: document.uri.fsPath,
 					line: target.warp_line,
-					context,
 					pm,
-					status_bar,
-					wss
+					status_bar
 				})
 			} catch (error: unknown) {
 				logger.error(error as Error)
@@ -126,14 +123,10 @@ export function get_commands(
 			const new_process = process === undefined
 
 			if (process === undefined) {
-				process = await launch_renpy({
+				process = await start_renpy({
 					pm,
 					status_bar,
-					wss,
-					context,
-					extra_environment: {
-						RENPY_SKIP_SPLASHSCREEN: "1"
-					}
+					env: { RENPY_SKIP_SPLASHSCREEN: "1" }
 				})
 				if (process === undefined) return
 			}
@@ -452,10 +445,10 @@ export function get_commands(
 				const p = await launch_renpy({
 					intent: "Linting project...",
 					command: ["lint", lint_txt],
+					register: false,
 					project_root,
 					context,
 					pm,
-					status_bar,
 					wss
 				})
 				if (!p) return
@@ -483,9 +476,9 @@ export function get_commands(
 				await launch_renpy({
 					intent: "Removing persistent data...",
 					command: ["rmpersistent"],
+					register: false,
 					context,
 					pm,
-					status_bar,
 					wss
 				})
 				vscode.window.showInformationMessage(
@@ -512,9 +505,9 @@ export function get_commands(
 				await launch_renpy({
 					intent: "Force recompiling project...",
 					command: ["compile"],
+					register: false,
 					context,
 					pm,
-					status_bar,
 					wss
 				})
 			} catch (error: unknown) {

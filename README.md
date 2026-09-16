@@ -5,7 +5,8 @@ Studio Code.
 
 ## Features
 
-- Start and quit your Ren'Py game directly from Visual Studio Code
+- Start and quit your Ren'Py game directly from Visual Studio Code, through the
+  Run and Debug view
 - Warp games to a specific line, or jump to a label
 - Move cursor position in Visual Studio Code as dialogue progresses with the
   _Follow Cursor_ mode
@@ -41,6 +42,99 @@ The commands can be triggered in several ways:
 5. By opening the command palette and typing the command, i.e.
    `Renpy: Open Ren'Py at current line`
 6. Via keyboard shortcut ([see here](#commands))
+
+## Run and Debug
+
+The debugger is how the extension runs your game. There is no separate mode:
+every Ren'Py process it tracks is a debug session, whether <kbd>F5</kbd>
+started it, a command did, or the socket server found a game you started
+yourself.
+
+| You want to     | Do this                                                             |
+| --------------- | ------------------------------------------------------------------- |
+| Start the game  | <kbd>F5</kbd>, the Run and Debug view, or any Ren'Py Launch command |
+| Stop it         | Stop on the debug toolbar                                           |
+| Stop all of it  | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>K</kbd>                        |
+| Read its output | The Debug Console for that session                                  |
+
+A session shows up with a working Stop button and a Debug Console carrying
+everything the game writes, including whatever it printed before the session
+attached. There is no separate output channel per process any more.
+
+There are no breakpoints and no stepping. Ren'Py has no debug protocol, so a
+session is there to start the game, stop it, and show what it prints.
+
+Warping an already-open game is not a launch, so it starts no new session. With
+`renpyWarp.strategy` set to **Update Window**, _Open Ren'Py to current line_
+warps the running game and its existing session stays as it is.
+
+If you also have
+[Ren'Py Language](https://marketplace.visualstudio.com/items?itemName=LuqueDaniel.languague-renpy)
+installed, <kbd>F5</kbd> first asks which debugger to use. Pick **Ren'Py Launch
+and Sync**. The prompt goes away once the workspace has a `launch.json`.
+
+### launch.json
+
+Both snippets below are offered by name when you add a configuration.
+
+```json
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "renpyWarp",
+			"request": "launch",
+			"name": "Launch Ren'Py project"
+		},
+		{
+			"type": "renpyWarp",
+			"request": "launch",
+			"name": "Open Ren'Py at current line",
+			"file": "${file}",
+			"line": "${lineNumber}"
+		}
+	]
+}
+```
+
+A `launch` configuration takes the following attributes, all optional:
+
+| Attribute | Type             | Meaning                                                                                        |
+| --------- | ---------------- | ---------------------------------------------------------------------------------------------- |
+| `project` | string           | Project root, the directory holding `game/`. Detected from `file`, or prompted for, when unset |
+| `file`    | string           | Script to open at. Absolute, or relative to `project`                                          |
+| `line`    | number \| string | 1-indexed line to warp to. Without it, the first playable statement in `file` is used          |
+| `args`    | string[]         | Extra arguments for the Ren'Py command line                                                    |
+| `env`     | object           | Extra environment, merged over `renpyWarp.processEnvironment`                                  |
+| `sdk`     | string           | SDK to run with, overriding `renpyWarp.sdkPath`. A managed version, or a path                  |
+
+A configuration always opens a new window, so `renpyWarp.strategy` **Update
+Window** does not apply to one. **Replace Window** still does.
+
+### Pinning an SDK per configuration
+
+`sdk` overrides <code codesetting="renpyWarp.sdkPath">renpyWarp.sdkPath</code>
+for that configuration, which is how a project pins the Ren'Py version it is
+written against.
+
+```json
+{
+	"type": "renpyWarp",
+	"request": "launch",
+	"name": "Launch on 8.3.7",
+	"sdk": "8.3.7"
+}
+```
+
+A value holding a path separator or starting with `~` is a path to an SDK
+directory. Anything else names a version the extension manages, and you are
+offered the download when it isn't installed yet. Prefer the version form in a
+`launch.json` you commit, since a path is only correct on the machine that
+wrote it.
+
+Everything that runs without a debug session still reads the setting. That
+includes the SDK shown in the status bar, the RPE installed into your projects
+at startup, and the _Lint_, _Delete persistent_ and _Force recompile_ commands.
 
 ## Configuration
 

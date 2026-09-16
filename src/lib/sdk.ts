@@ -79,6 +79,103 @@ export async function get_sdk_path(prompt = true): Promise<string | undefined> {
 	return resolve_path(sdk_path_setting)
 }
 
+/** a reference naming a location rather than a managed install */
+function reference_is_path(reference: string): boolean {
+	return (
+		reference.startsWith("~") ||
+		reference.includes("/") ||
+		reference.includes("\\") ||
+		path.isAbsolute(reference)
+	)
+}
+
+/**
+ * turns the `sdk` launch attribute into a path. anything shaped like a path is
+ * one, and anything else names a version the extension manages, which is
+ * offered for download when it isn't installed yet
+ *
+ * @returns
+ * the sdk path, or undefined where the reference was bad or a prompt was
+ * cancelled. it has already said whatever there was to say
+ */
+export async function resolve_sdk_reference(
+	reference: string,
+	context: vscode.ExtensionContext
+): Promise<string | undefined> {
+	const trimmed = reference.trim()
+
+	if (!trimmed) return undefined
+
+	if (reference_is_path(trimmed)) {
+		const sdk_path = resolve_path(trimmed)
+
+		if (!(await path_is_sdk(sdk_path))) {
+			vscode.window.showErrorMessage(
+				`'sdk' points at ${tildify(sdk_path)}, which is not a Ren'Py SDK`,
+				"OK"
+			)
+			return undefined
+		}
+
+		return sdk_path
+	}
+
+	const downloaded = await list_downloaded_sdks(context)
+	const installed = downloaded.find(
+		(sdk_path) => basename(sdk_path) === trimmed
+	)
+
+	if (installed) return installed
+
+	return await prompt_download_sdk_version(trimmed, context)
+}
+
+/** offers to install a version that `sdk` names but nothing has downloaded */
+async function prompt_download_sdk_version(
+	version: string,
+	context: vscode.ExtensionContext
+): Promise<string | undefined> {
+	const picked = await vscode.window.showInformationMessage(
+		`Ren'Py ${version} is not installed. Download it?`,
+		"Download",
+		"Cancel"
+	)
+
+	if (picked !== "Download") return undefined
+
+	try {
+		const nightly = version.includes("nightly")
+		const remote_sdks = nightly
+			? await list_nightly_sdks()
+			: await list_remote_sdks()
+		const sdk = remote_sdks.find((remote) => remote.name === version)
+
+		if (!sdk) {
+			vscode.window.showErrorMessage(
+				`No Ren'Py SDK named '${version}' is available to download`,
+				"OK"
+			)
+			return undefined
+		}
+
+		const sdk_url = nightly
+			? await find_sdk_in_nightly_index(sdk.url)
+			: await find_sdk_in_nginx_dir(sdk.url)
+
+		// the setting is left alone, as `sdk` overrides it rather than sets it
+		return (await download_sdk(sdk_url, sdk.name, context)) ?? undefined
+	} catch (error) {
+		logger.error(`failed to install sdk ${version}:`, error)
+		vscode.window.showErrorMessage(
+			`Failed to install Ren'Py ${version}: ${
+				error instanceof Error ? error.message : "Unknown error"
+			}`,
+			"OK"
+		)
+		return undefined
+	}
+}
+
 export async function prompt_sdk_quick_pick(
 	context: vscode.ExtensionContext
 ): Promise<string | void> {

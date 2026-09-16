@@ -17,6 +17,9 @@ import { is_special_label } from "../label"
 
 export const logger = get_logger()
 
+/** how many lines to hold for a debug session that has not bound yet */
+const BACKLOG_LINES = 1000
+
 interface UnmanagedProcessOptions {
 	pid: number
 	project_root: string
@@ -32,6 +35,8 @@ export class UnmanagedProcess {
 	labels: string[] | undefined = undefined
 	last_cursor?: CurrentLineSocketMessage = undefined
 	current_label?: string = undefined
+	/** id of the debug session mirroring this process, when one is bound */
+	debug_session_id?: string = undefined
 
 	private emitter = new EventEmitter()
 	emit = this.emitter.emit.bind(this.emitter)
@@ -241,8 +246,10 @@ export class ManagedProcess extends UnmanagedProcess {
 	private process: child_process.ChildProcess
 	private tail: TailFile
 	log_file: string
-	output_channel?: vscode.OutputChannel
 	exit_code?: number | null
+
+	/** lines the tail read before anything was listening for them */
+	private output_backlog: string[] = []
 
 	constructor({ process, project_root, log_file }: ManagedProcessOptions) {
 		if (!process.pid) {
@@ -259,11 +266,6 @@ export class ManagedProcess extends UnmanagedProcess {
 		this.project_root = project_root
 		this.log_file = log_file
 
-		this.output_channel = vscode.window.createOutputChannel(
-			`Ren'Py Launch and Sync - Process Output (${this.process.pid})`
-		)
-
-		this.output_channel.appendLine(`process ${this.process.pid} started`)
 		logger.info(`logging process ${this.pid} to ${log_file}`)
 
 		this.tail = new TailFile(log_file, {
@@ -272,11 +274,15 @@ export class ManagedProcess extends UnmanagedProcess {
 		this.tail.start()
 
 		this.tail.pipe(split2()).on("data", (line: string) => {
-			try {
-				this.output_channel?.appendLine(line)
-			} catch {
-				// nothing left to log to
+			// the debug console is the only place process output goes, so hold
+			// on to whatever arrives before a session binds
+			if (this.emit("output", line)) return
+
+			if (this.output_backlog.length < BACKLOG_LINES) {
+				this.output_backlog.push(line)
 			}
+
+			logger.debug(`process ${this.pid} >`, line)
 		})
 
 		this.process.on("close", async (code) => {
@@ -284,11 +290,10 @@ export class ManagedProcess extends UnmanagedProcess {
 			this.exit_code = code
 			logger.info(`process ${this.pid} exited with code ${code}`)
 
+			// drained first, so the last lines the game wrote reach the debug
+			// console before the session hears that it is over
 			await this.tail.quit()
-			this.output_channel?.appendLine(`process exited with code ${code}`)
 
-			// emitted only once the output channel's final write above has gone
-			// through, so callers can safely dispose it upon seeing "exit"
 			this.emit("exit")
 		})
 	}
@@ -307,10 +312,17 @@ export class ManagedProcess extends UnmanagedProcess {
 		})
 	}
 
+	/** hands over the lines read before a listener attached, once */
+	take_output_backlog(): string[] {
+		const backlog = this.output_backlog
+		this.output_backlog = []
+
+		return backlog
+	}
+
 	dispose(): void {
 		super.dispose()
 		this.process.unref()
-		this.output_channel?.dispose()
 		this.tail.quit().catch((err) => {
 			logger.error("error stopping tail:", err)
 		})

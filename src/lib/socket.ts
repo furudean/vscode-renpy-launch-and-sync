@@ -143,11 +143,10 @@ export class WarpSocketService {
 
 			this.deny_processes.clear()
 			this.allowed_processes.clear()
+			// every tracked process goes down with the server, which ends the
+			// debug sessions mirroring them
 			this.pm.clear()
-			this.status_bar.update(() => ({
-				socket_server_status: "stopped",
-				processes: new Map()
-			}))
+			this.status_bar.update(() => ({ socket_server_status: "stopped" }))
 			vscode.commands.executeCommand(
 				"setContext",
 				"renpyWarp.socketServerRunning",
@@ -207,6 +206,19 @@ export class WarpSocketService {
 				true
 			)
 		})
+	}
+
+	/**
+	 * stops tracking a process and refuses it if it connects again. the
+	 * handshake already turns away denied pids
+	 */
+	public forget(pid: number): void {
+		logger.info(`forgetting process ${pid}`)
+
+		this.allowed_processes.delete(pid)
+		this.deny_processes.add(pid)
+
+		this.pm.find_by_pid(pid)?.socket?.close(4001, "forgotten")
 	}
 
 	public close() {
@@ -425,11 +437,9 @@ export class WarpSocketService {
 
 		rpp.on("exit", () => {
 			logger.info(`external process ${pid} exited`)
-			this.status_bar.delete_process(pid)
 		})
 
 		this.pm.add(pid, rpp)
-		this.status_bar.set_process(pid, "idle")
 
 		if (this.context.globalState.get("hideExternalProcessConnected")) {
 			this.status_bar.notify(`$(plug) Connected to Ren'Py process ${pid}`)

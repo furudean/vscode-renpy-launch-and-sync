@@ -2,6 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+- Add a `renpyWarp` debugger, so <kbd>F5</kbd> in a `.rpy` file starts the game
+  through the Run and Debug view
+- The debugger is now the only way the extension runs a game. Every tracked
+  Ren'Py process is a debug session, whether <kbd>F5</kbd> started it, a command
+  did, or the socket server adopted a game started elsewhere
+- **Breaking**: the status bar no longer has a launch control. Starting and
+  stopping happen through the Run and Debug view and the debug toolbar, or with
+  the existing keyboard shortcuts
+- **Breaking**: the per-process `Ren'Py Launch and Sync - Process Output (pid)`
+  output channels are gone. Game output goes to the Debug Console of its
+  session, which also replays what the game printed before the session attached.
+  The extension's own log channel is unchanged
+- Warping an open game with the **Update Window** strategy starts no new
+  session, since nothing is launched
+- `args` in a `launch.json` configuration is appended to the Ren'Py command line,
+  and `env` is merged over `renpyWarp.processEnvironment`
+- `sdk` in a `launch.json` configuration pins the Ren'Py SDK for that
+  configuration, overriding `renpyWarp.sdkPath`. It takes a version the
+  extension manages, which is offered for download when it isn't installed, or
+  a path to an SDK directory
+
 ## 4.0.0 - 2026-09-15
 
 - Rewrite of cursor tracking. Now places the a highlight on the current dialogue

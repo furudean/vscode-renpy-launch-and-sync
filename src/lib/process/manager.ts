@@ -35,6 +35,28 @@ export class ProcessManager {
 		return this.processes.get(id)
 	}
 
+	/**
+	 * managed processes are keyed by nonce and unmanaged ones by pid, so a
+	 * lookup by pid has to walk the values
+	 */
+	find_by_pid(pid: number): AnyProcess | undefined {
+		for (const process of this) {
+			if (process.pid === pid) return process
+		}
+
+		return undefined
+	}
+
+	/** drops a process from tracking without emitting `exit` for it */
+	remove_process(process: AnyProcess): void {
+		for (const [id, candidate] of this.processes) {
+			if (candidate === process) {
+				this.processes.delete(id)
+				return
+			}
+		}
+	}
+
 	at(index: number): AnyProcess | undefined {
 		return Array.from(this).at(index)
 	}
@@ -43,8 +65,13 @@ export class ProcessManager {
 		await Promise.all(Array.from(this).map((process) => process.kill()))
 	}
 
+	/**
+	 * drops every process. each one gets an `exit` so the debug session and
+	 * the decorations watching it unwind, though the games stay running
+	 */
 	clear() {
-		for (const process of this) {
+		for (const process of Array.from(this)) {
+			process.emit("exit")
 			process.dispose()
 		}
 		this.processes.clear()
