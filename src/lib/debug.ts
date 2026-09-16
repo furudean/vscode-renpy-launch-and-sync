@@ -586,26 +586,27 @@ export class RenpyDebugSession extends DebugSession {
 		}
 
 		const on_message = (message: AnySocketMessage) => {
-			if (message.type === "current_line") {
-				// if no label has been fired yet this is our best signal
-				this.set_can_step(true)
+			if (message.type === "current_label") {
+				const is_plumbing = is_system_label(message.label)
+				// _return fires when context is released to the regular game flow
+				const is_gameplay = !is_plumbing || message.label === "_return"
+				this.set_can_step(is_gameplay)
+
+				if (is_plumbing) return
+
+				this.console(`label ${message.label}`)
 				return
 			}
 
-			if (message.type !== "current_label") return
-
-			const is_plumbing = is_system_label(message.label)
-			// _return fires when context is released to the regular game flow
-			const is_gameplay = !is_plumbing || message.label === "_return"
-			this.set_can_step(is_gameplay)
-
-			if (is_plumbing) return
-
-			this.console(`label ${message.label}`)
+			this.set_can_step(true)
 		}
 
 		rpp.on("socketMessage", on_message)
 		this.unbind.push(() => rpp.off("socketMessage", on_message))
+
+		const on_warped = () => this.set_can_step(true)
+		rpp.on("warped", on_warped)
+		this.unbind.push(() => rpp.off("warped", on_warped))
 
 		const on_exit = () => {
 			this.rpp_exited = true

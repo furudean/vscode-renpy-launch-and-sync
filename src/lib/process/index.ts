@@ -205,11 +205,13 @@ export class UnmanagedProcess {
 	 * 1-indexed line number
 	 */
 	async warp_to_line(file: string, line: number) {
-		return this.ipc({
+		await this.ipc({
 			type: "warp_to_line",
 			file,
 			line
 		})
+
+		this.emit("warped")
 	}
 
 	/**
