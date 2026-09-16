@@ -592,9 +592,6 @@ export class RenpyDebugSession extends DebugSession {
 				const is_gameplay = !is_plumbing || message.label === "_return"
 				this.set_can_step(is_gameplay)
 
-				if (is_plumbing) return
-
-				this.console(`label ${message.label}`)
 				return
 			}
 
