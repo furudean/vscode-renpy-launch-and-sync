@@ -1,10 +1,12 @@
 import * as vscode from "vscode"
 import path from "upath"
 import {
+	ContinuedEvent,
 	DebugSession,
 	ExitedEvent,
 	InitializedEvent,
 	OutputEvent,
+	StoppedEvent,
 	TerminatedEvent,
 	Thread
 } from "@vscode/debugadapter"
@@ -25,11 +27,13 @@ import {
 	warp_refusal,
 	warp_target
 } from "./script"
-import { is_special_label } from "./label"
+import { is_system_label } from "./label"
 import { resolve_sdk_reference } from "./sdk"
 import { get_logger } from "./log"
 
 const logger = get_logger()
+
+const THREAD_ID = 1
 
 /**
  * the debugger this extension contributes. the Ren'Py Language extension
@@ -283,6 +287,8 @@ export class RenpyDebugSession extends DebugSession {
 	private request: "launch" | "attach" = "launch"
 	private unbind: (() => void)[] = []
 
+	private can_step = false
+
 	constructor({
 		context,
 		pm,
@@ -306,7 +312,8 @@ export class RenpyDebugSession extends DebugSession {
 			...response.body,
 			supportsConfigurationDoneRequest: true,
 			supportsTerminateRequest: true,
-			supportTerminateDebuggee: true
+			supportTerminateDebuggee: true,
+			supportsStepBack: true
 		}
 
 		this.sendResponse(response)
@@ -380,9 +387,8 @@ export class RenpyDebugSession extends DebugSession {
 		this.sendResponse(response)
 	}
 
-	/** the Call Stack view asks for threads even though nothing ever stops */
 	protected threadsRequest(response: DebugProtocol.ThreadsResponse): void {
-		response.body = { threads: [new Thread(1, "Ren'Py")] }
+		response.body = { threads: [new Thread(THREAD_ID, "Ren'Py")] }
 		this.sendResponse(response)
 	}
 
@@ -436,37 +442,69 @@ export class RenpyDebugSession extends DebugSession {
 		)
 	}
 
-	// nothing ever sends a StoppedEvent, so the ui never offers these. they
-	// answer anyway in case something asks
 	protected pauseRequest(response: DebugProtocol.PauseResponse): void {
-		this.refuse_stepping(response)
+		// treat as a no-op
+		this.sendResponse(response)
 	}
 
-	protected continueRequest(response: DebugProtocol.ContinueResponse): void {
-		this.refuse_stepping(response)
+	protected async continueRequest(
+		response: DebugProtocol.ContinueResponse
+	): Promise<void> {
+		await this.step(response, (rpp) => rpp.next_checkpoint())
 	}
 
-	protected nextRequest(response: DebugProtocol.NextResponse): void {
-		this.refuse_stepping(response)
+	protected async stepInRequest(
+		response: DebugProtocol.StepInResponse
+	): Promise<void> {
+		await this.step(response, (rpp) => rpp.next_checkpoint())
 	}
 
-	protected stepInRequest(response: DebugProtocol.StepInResponse): void {
-		this.refuse_stepping(response)
+	protected async reverseContinueRequest(
+		response: DebugProtocol.ReverseContinueResponse
+	): Promise<void> {
+		await this.step(response, (rpp) => rpp.rollback())
 	}
 
-	protected stepOutRequest(response: DebugProtocol.StepOutResponse): void {
-		this.refuse_stepping(response)
+	protected async stepOutRequest(
+		response: DebugProtocol.StepOutResponse
+	): Promise<void> {
+		await this.step(response, (rpp) => rpp.rollback())
 	}
 
-	private refuse_stepping(response: DebugProtocol.Response): void {
-		this.sendErrorResponse(
-			response,
-			1004,
-			"Ren'Py Launch and Sync cannot pause or step through a Ren'Py process"
-		)
+	protected async nextRequest(
+		response: DebugProtocol.NextResponse
+	): Promise<void> {
+		await this.step(response, (rpp) => rpp.next_checkpoint())
 	}
 
-	/** follows a process for as long as the session lasts */
+	protected async stepBackRequest(
+		response: DebugProtocol.StepBackResponse
+	): Promise<void> {
+		await this.step(response, (rpp) => rpp.rollback())
+	}
+
+	private async step(
+		response: DebugProtocol.Response,
+		fn: (rpp: AnyProcess) => Promise<void>
+	): Promise<void> {
+		if (!this.can_step) {
+			// nothing to do; silently ignore
+			this.sendResponse(response)
+			return
+		}
+
+		try {
+			await fn(this.rpp!)
+			this.sendResponse(response)
+			// vscode only keeps the step controls enabled while the session is
+			// in a stopped state, so we re-report
+			this.sendEvent(new StoppedEvent("step", THREAD_ID))
+		} catch (error) {
+			logger.error(error as Error)
+			this.sendErrorResponse(response, 1005, String(error))
+		}
+	}
+
 	private bind(rpp: AnyProcess): void {
 		this.rpp = rpp
 		rpp.debug_session_id = this.session.id
@@ -489,10 +527,20 @@ export class RenpyDebugSession extends DebugSession {
 		}
 
 		const on_message = (message: AnySocketMessage) => {
-			if (message.type !== "current_label") return
-			if (is_special_label(message.label)) return
+			if (message.type === "current_line") {
+				// if no label has been fired yet this is our best signal
+				this.set_can_step(true)
+				return
+			}
 
-			this.console(`label ${message.label}`)
+			if (message.type !== "current_label") return
+
+			const is_plumbing = is_system_label(message.label)
+			// _return fires when context is released to the regular game flow
+			const is_gameplay = !is_plumbing || message.label === "_return"
+			this.set_can_step(is_gameplay)
+
+			if (is_plumbing) return
 		}
 
 		rpp.on("socketMessage", on_message)
@@ -503,7 +551,6 @@ export class RenpyDebugSession extends DebugSession {
 				this.console(`process exited with code ${rpp.exit_code}`)
 				this.sendEvent(new ExitedEvent(rpp.exit_code ?? 0))
 			} else {
-				// an external process has no exit code to report
 				this.console("process exited")
 			}
 
@@ -514,10 +561,6 @@ export class RenpyDebugSession extends DebugSession {
 		this.unbind.push(() => rpp.off("exit", on_exit))
 	}
 
-	/**
-	 * drops a process the extension did not launch. the socket server turns it
-	 * away if it connects again
-	 */
 	private forget(rpp: AnyProcess): void {
 		this.wss.forget(rpp.pid)
 
@@ -533,16 +576,24 @@ export class RenpyDebugSession extends DebugSession {
 		this.sendEvent(new OutputEvent(text + "\n", "console"))
 	}
 
+	private set_can_step(can_step: boolean): void {
+		if (can_step === this.can_step) return
+		this.can_step = can_step
+
+		this.sendEvent(
+			can_step
+				? new StoppedEvent("entry", THREAD_ID)
+				: new ContinuedEvent(THREAD_ID)
+		)
+	}
+
 	private cleanup(): void {
 		for (const off of this.unbind) off()
 		this.unbind = []
 	}
 }
 
-/** how a session the extension starts itself shows up in the ui */
 const QUIET_SESSION: vscode.DebugSessionOptions = {
-	// the toolbar stays so Stop works, but the sidebar and vscode's own debug
-	// status bar are left alone
 	suppressDebugView: true,
 	suppressDebugStatusbar: true,
 	suppressSaveBeforeStart: true

@@ -13,7 +13,7 @@ import {
 import { process_finished } from "../sh"
 import TailFile from "@logdna/tail-file"
 import split2 from "split2"
-import { is_special_label } from "../label"
+import { is_system_label } from "../label"
 
 export const logger = get_logger()
 
@@ -71,7 +71,7 @@ export class UnmanagedProcess {
 				this.last_cursor = message
 			}
 			if (message.type === "current_label") {
-				if (!is_special_label(message.label)) {
+				if (!is_system_label(message.label)) {
 					this.current_label = message.label
 				}
 			}
@@ -226,6 +226,18 @@ export class UnmanagedProcess {
 	async advance() {
 		return this.ipc({
 			type: "advance"
+		})
+	}
+
+	async rollback() {
+		return this.ipc({
+			type: "rollback"
+		})
+	}
+
+	async next_checkpoint() {
+		return this.ipc({
+			type: "next_checkpoint"
 		})
 	}
 

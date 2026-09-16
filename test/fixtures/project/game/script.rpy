@@ -11,3 +11,17 @@ label start:
     "This is the fourth line."
 
     return
+
+label pauses:
+
+    "First segment.{w}Second segment.{w}Third segment."
+
+    "After the pauses."
+
+    return
+
+label _fake_pause:
+
+    pause
+
+    jump _return

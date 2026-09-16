@@ -19,7 +19,7 @@ import { ProcessManager } from "./process"
 import { StatusBar } from "./status_bar"
 import { FollowCursorService, sync_editor_with_renpy } from "./follow_cursor"
 import { get_logger } from "./log"
-import { is_special_label } from "./label"
+import { is_system_label } from "./label"
 import {
 	get_statements,
 	next_resting_statement,
@@ -272,7 +272,7 @@ export function get_commands(
 
 					if (process.labels !== undefined) {
 						filtered_labels = process.labels
-							.filter((label) => !is_special_label(label))
+							.filter((label) => !is_system_label(label))
 							.sort()
 
 						quick_pick.items = build_items(filtered_labels)

@@ -774,6 +774,191 @@ suite("renpyWarp", function () {
 			assert.strictEqual(api.pm.length, 0)
 		})
 
+		suite("stepping", function () {
+			this.timeout(30_000)
+
+			suiteSetup(async () => {
+				await update_config({ renpyExtensionsEnabled: "Enabled" })
+			})
+
+			suiteTeardown(async () => {
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await update_config({ renpyExtensionsEnabled: "Disabled" })
+			})
+
+			async function debugging(): Promise<{
+				process: AnyProcess
+				session: DebugSession
+			}> {
+				let session: DebugSession | undefined
+				const listener = vscode.debug.onDidStartDebugSession((started) => {
+					if (started.type === "renpyWarp") session = started
+				})
+
+				let started: boolean
+				try {
+					started = await vscode.debug.startDebugging(folder, {
+						type: "renpyWarp",
+						request: "launch",
+						name: "t",
+						project: project_root
+					})
+				} finally {
+					listener.dispose()
+				}
+				assert.strictEqual(started, true, "debug session did not start")
+				assert.ok(session, "debug session did not start")
+
+				const process = api.pm.at(-1)
+				assert.ok(process, "game did not launch")
+
+				await wait_for(() => process.socket_ready, "the rpe to connect", {
+					process
+				})
+				await process.wait_for_labels(10_000)
+
+				return { process, session }
+			}
+
+			async function stop(process: AnyProcess): Promise<void> {
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await wait_for(() => process.dead, "the game to die")
+				await wait_for(
+					() => renpy_sessions().length === 0,
+					"the session to terminate"
+				)
+			}
+
+			function track_steps(): {
+				events: string[]
+				dispose: () => void
+			} {
+				const events: string[] = []
+
+				const tracker = vscode.debug.registerDebugAdapterTrackerFactory(
+					"renpyWarp",
+					{
+						createDebugAdapterTracker() {
+							return {
+								onDidSendMessage(message: { type?: string; event?: string }) {
+									if (
+										message.type === "event" &&
+										(message.event === "stopped" ||
+											message.event === "continued")
+									) {
+										events.push(message.event)
+									}
+								}
+							}
+						}
+					}
+				)
+
+				return { events, dispose: () => tracker.dispose() }
+			}
+
+			test("one next_checkpoint skips every pause in a dialogue block", async () => {
+				const { process, session } = await debugging()
+
+				try {
+					await process.jump_to_label("pauses")
+					await wait_for(
+						() => process.last_cursor !== undefined,
+						"ren'py to report the paused line",
+						{ process }
+					)
+					const paused_line = process.last_cursor!.line
+
+					await session.customRequest("next", { threadId: 1 })
+
+					await wait_for(
+						() => process.last_cursor?.line !== paused_line,
+						"ren'py to move past the paused line",
+						{ process }
+					)
+					assert.strictEqual(
+						process.last_cursor?.what,
+						"After the pauses.",
+						"next_checkpoint stopped inside the pause block"
+					)
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("stepBack rolls back to the previous checkpoint", async () => {
+				const { process, session } = await debugging()
+
+				try {
+					await process.jump_to_label("start")
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to report script.rpy:5",
+						{ process }
+					)
+
+					await process.advance()
+					await wait_for(
+						() => process.last_cursor?.line === 7,
+						"ren'py to report script.rpy:7",
+						{ process }
+					)
+
+					await session.customRequest("stepBack", { threadId: 1 })
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to roll back to script.rpy:5",
+						{ process }
+					)
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("_return re-enables stepping immediately, without waiting on dialogue", async () => {
+				// registering the tracker before the session starts is what makes
+				// vscode wire it up to it at all
+				const { events, dispose } = track_steps()
+				const { process } = await debugging()
+
+				try {
+					await process.jump_to_label("start")
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to report script.rpy:5",
+						{ process }
+					)
+
+					await process.jump_to_label("_fake_pause")
+					await wait_for(
+						() => events.includes("continued"),
+						"the session to report leaving a checkpoint"
+					)
+
+					const before_return = events.length
+
+					// releases the `pause`, letting `_fake_pause` reach `jump
+					// _return`. nothing said afterwards would trigger a
+					// current_line message, so a stopped event here can only
+					// have come from the `_return` label itself
+					await process.advance()
+
+					await wait_for(
+						() => events.length > before_return,
+						"a step event following _return"
+					)
+					assert.strictEqual(
+						events[before_return],
+						"stopped",
+						"_return did not immediately re-enable stepping"
+					)
+				} finally {
+					dispose()
+					await stop(process)
+				}
+			})
+		})
+
 		suite("external processes", function () {
 			this.timeout(30_000)
 

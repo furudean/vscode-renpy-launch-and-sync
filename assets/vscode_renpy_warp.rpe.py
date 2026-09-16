@@ -189,13 +189,29 @@ def dialogue_offset(script_text, displayed, end):
     return i
 
 
-def py_exec(text):
+def invoke(fn):
     while renpy.exports.is_init_phase():
         logger.debug("in init phase, waiting...")
         sleep(0.2)
 
-    fn = functools.partial(renpy.python.py_exec, text)
     renpy.exports.invoke_in_main_thread(fn)
+
+
+def py_exec(text):
+    invoke(functools.partial(renpy.python.py_exec, text))
+
+
+_resume_context = None
+
+
+def begin_next_checkpoint():
+    global _resume_context
+    _resume_context = renpy.game.context().current
+
+    if renpy.game.log.in_rollback():
+        renpy.exports.roll_forward_core()
+
+    renpy.exports.end_interaction(True)
 
 
 def socket_send(message, websocket):
@@ -227,6 +243,14 @@ def socket_listener(websocket):
 
         elif payload["type"] == "advance":
             py_exec("renpy.end_interaction(True)")
+
+        elif payload["type"] == "rollback":
+            global _resume_context
+            _resume_context = None
+            py_exec("renpy.rollback(force=True, checkpoints=1, greedy=True)")
+
+        elif payload["type"] == "next_checkpoint":
+            invoke(begin_next_checkpoint)
 
         elif payload["type"] == "jump_to_label":
             label = payload["label"]
@@ -261,6 +285,18 @@ def socket_producer(websocket):
         # segment reporting it says nothing `begin` doesn't already say
         if event != ("show" if segmented else "begin"):
             return
+
+        global _resume_context
+
+        if _resume_context is not None:
+            if renpy.game.context().current == _resume_context:
+                # auto-advance through {w} or {p} so a step lands on the next
+                # statement, not mid-line
+                renpy.exports.invoke_in_main_thread(
+                    renpy.exports.end_interaction, True)
+                return
+
+            _resume_context = None
 
         filename, line = renpy.exports.get_filename_line()
         relative_filename = Path(filename).relative_to('game')
