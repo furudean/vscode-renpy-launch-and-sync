@@ -455,21 +455,14 @@ export class RenpyDebugSession extends DebugSession {
 		try {
 			if (!rpp) {
 				// nothing ever bound
-			} else if (this.request === "launch") {
-				// a restart disconnects before launching again, so killing here
-				// is what leaves the replacement window as the only one
-				const should_terminate =
-					args.terminateDebuggee === true ||
-					args.terminateDebuggee === undefined
-
-				if (!this.rpp_exited && should_terminate) {
-					await rpp.kill()
-				}
-			} else if (args.restart) {
+			} else if (this.request === "attach" && args.restart) {
 				// vscode attaches again with the same pid, so the process only
 				// has to come free of this session for that bind to succeed
 				rpp.debug_session_id = undefined
-			} else if (args.terminateDebuggee === true) {
+			} else if (
+				!this.rpp_exited &&
+				(args.terminateDebuggee ?? this.request === "launch")
+			) {
 				await rpp.kill()
 			} else {
 				this.forget(rpp)
@@ -485,8 +478,17 @@ export class RenpyDebugSession extends DebugSession {
 	protected async terminateRequest(
 		response: DebugProtocol.TerminateResponse
 	): Promise<void> {
+		const rpp = this.rpp
+
 		try {
-			await this.rpp?.kill()
+			if (rpp && !this.rpp_exited) {
+				// a launched process is ours to kill; an attached one outlives us
+				if (this.request === "launch") {
+					await rpp.kill()
+				} else {
+					this.forget(rpp)
+				}
+			}
 		} catch (error) {
 			logger.error(error as Error)
 		}
