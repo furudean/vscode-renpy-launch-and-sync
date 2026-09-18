@@ -1,13 +1,16 @@
 import * as vscode from "vscode"
+import path from "upath"
 import { get_config } from "./config"
 import { get_logger } from "./log"
-import { get_executable, get_version } from "./sh"
+import { find_project_root, get_executable, get_version } from "./sh"
 import tildify from "tildify"
-import { get_sdk_path } from "./sdk"
+import { get_sdk_path, get_version_file_raw_value } from "./sdk"
+import { is_explicit_path } from "./path"
 
 const logger = get_logger()
 
 export class StatusBar {
+	private context: vscode.ExtensionContext
 	private sdk_bar: vscode.StatusBarItem
 	private instance_bar: vscode.StatusBarItem
 	private follow_cursor_bar: vscode.StatusBarItem
@@ -24,7 +27,9 @@ export class StatusBar {
 		message_level: undefined as number | undefined
 	}
 
-	constructor() {
+	constructor(context: vscode.ExtensionContext) {
+		this.context = context
+
 		this.instance_bar = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
 			0
@@ -52,11 +57,67 @@ export class StatusBar {
 				)
 			})
 
+		const update_status_bar_on_active_editor_change =
+			vscode.window.onDidChangeActiveTextEditor(() => {
+				this.update_status_bar().catch((err) =>
+					logger.error("failed to update status bar:", err)
+				)
+			})
+
+		const update_status_bar_on_version_file_change = () => {
+			this.update_status_bar().catch((err) =>
+				logger.error("failed to update status bar:", err)
+			)
+		}
+
+		const version_file_watchers = new Map<string, vscode.Disposable>()
+		const sync_version_file_watchers = () => {
+			const folders = vscode.workspace.workspaceFolders ?? []
+			const seen = new Set(folders.map((f) => f.uri.toString()))
+
+			for (const [key, disposable] of version_file_watchers) {
+				if (!seen.has(key)) {
+					disposable.dispose()
+					version_file_watchers.delete(key)
+				}
+			}
+
+			for (const folder of folders) {
+				const key = folder.uri.toString()
+				if (version_file_watchers.has(key)) continue
+
+				const watcher = vscode.workspace.createFileSystemWatcher(
+					new vscode.RelativePattern(folder, "**/.renpy-version")
+				)
+				watcher.onDidCreate(update_status_bar_on_version_file_change)
+				watcher.onDidChange(update_status_bar_on_version_file_change)
+				watcher.onDidDelete(update_status_bar_on_version_file_change)
+				version_file_watchers.set(key, watcher)
+			}
+		}
+		sync_version_file_watchers()
+
+		const update_watchers_on_workspace_folders_change =
+			vscode.workspace.onDidChangeWorkspaceFolders(sync_version_file_watchers)
+
+		// the native watcher above can still lag by a beat, so react to an
+		// in-editor save of the file itself immediately rather than waiting on it
+		const update_status_bar_on_version_file_save =
+			vscode.workspace.onDidSaveTextDocument((document) => {
+				if (path.basename(document.uri.fsPath) === ".renpy-version") {
+					update_status_bar_on_version_file_change()
+				}
+			})
+
 		this.subscriptions.push(
 			this.instance_bar,
 			this.follow_cursor_bar,
 			this.notification_bar,
-			update_status_bar_on_config_update
+			update_status_bar_on_config_update,
+			update_status_bar_on_active_editor_change,
+			update_watchers_on_workspace_folders_change,
+			update_status_bar_on_version_file_save,
+			{ dispose: () => version_file_watchers.forEach((w) => w.dispose()) }
 		)
 
 		this.update_status_bar().catch((err) =>
@@ -127,7 +188,30 @@ export class StatusBar {
 			this.notification_bar.hide()
 		}
 
-		const sdk_path = await get_sdk_path(false)
+		const active_document = vscode.window.activeTextEditor?.document
+		const current_file =
+			active_document?.uri.scheme === "file"
+				? active_document.uri.fsPath
+				: undefined
+		const current_project_root = current_file
+			? find_project_root(current_file)
+			: null
+
+		const { version_file, raw_value } = await get_version_file_raw_value(
+			current_project_root ?? undefined
+		)
+
+		const sdk_path = await get_sdk_path(
+			this.context,
+			false,
+			current_project_root ?? undefined,
+			{ version_file, raw_value }
+		)
+
+		const version_file_source = version_file
+			? vscode.workspace.asRelativePath(version_file)
+			: undefined
+
 		const extensions_enabled =
 			get_config("renpyExtensionsEnabled") === "Enabled"
 
@@ -191,14 +275,19 @@ export class StatusBar {
 		}
 
 		if (!sdk_path || !executable || !version) {
-			this.sdk_bar.text = "$(warp-renpy) Set Ren'Py SDK"
-			this.sdk_bar.backgroundColor = new vscode.ThemeColor(
-				"statusBarItem.warningBackground"
-			)
-			this.sdk_bar.color = new vscode.ThemeColor(
-				"statusBarItem.warningForeground"
-			)
-			this.sdk_bar.tooltip = ""
+			if (raw_value && !is_explicit_path(raw_value)) {
+				this.sdk_bar.backgroundColor = undefined
+				this.sdk_bar.color = undefined
+				this.sdk_bar.text = `$(warp-renpy) ${raw_value}`
+				this.sdk_bar.tooltip = version_file_source
+					? `Using Ren'Py SDK ${raw_value} (from ${version_file_source})`
+					: `Using Ren'Py SDK ${raw_value}`
+			} else {
+				this.sdk_bar.text = "$(warp-renpy)"
+				this.sdk_bar.backgroundColor = undefined
+				this.sdk_bar.color = undefined
+				this.sdk_bar.tooltip = "No Ren'Py SDK configured"
+			}
 		} else {
 			this.sdk_bar.backgroundColor = undefined
 			this.sdk_bar.color = undefined
@@ -212,9 +301,15 @@ export class StatusBar {
 				this.sdk_bar.text = `$(warp-renpy) ${tildify(sdk_path)} (${version})`
 			}
 
-			this.sdk_bar.tooltip = `Using Ren'Py SDK at ${tildify(sdk_path)}`
+			this.sdk_bar.tooltip = version_file_source
+				? `Using Ren'Py SDK at ${tildify(sdk_path)} (from ${version_file_source})`
+				: `Using Ren'Py SDK at ${tildify(sdk_path)}`
 		}
-		this.sdk_bar.command = "renpyWarp.setSdkPath"
+		this.sdk_bar.command = {
+			title: "Set SDK Path",
+			command: "renpyWarp.setSdkPath",
+			arguments: [current_project_root ?? undefined]
+		}
 		this.sdk_bar.show()
 	}
 

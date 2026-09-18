@@ -44,9 +44,10 @@ The commands can be triggered in several ways:
 
 ## Configuration
 
-You must set <code codesetting="renpyWarp.sdkPath">renpyWarp.sdkPath</code> to a
-directory where the Ren'Py SDK can be found. If you haven't done so, a prompt
-will appear to inform you to set it.
+The SDK version used is decided by a `.renpy-version` file in your project. If
+you do not have one configured, you will be prompted to do so when you try and
+launch a game. The SDK can be automatically downloaded from Ren'Py's servers, or
+you can bring your own.
 
 ### Strategy
 

@@ -109,12 +109,6 @@ export async function update_existing_rpes(context: vscode.ExtensionContext) {
 
 	if (!projects) return
 
-	const sdk_path = await get_sdk_path(false)
-	if (!sdk_path) return
-
-	const executable = await get_executable(sdk_path)
-	if (!executable) return
-
 	for (const project of projects) {
 		const any_rpe = (await list_rpes(project)).length > 0
 
@@ -122,6 +116,12 @@ export async function update_existing_rpes(context: vscode.ExtensionContext) {
 			logger.info("no rpe found in", project)
 			continue
 		}
+
+		const sdk_path = await get_sdk_path(context, false, project)
+		if (!sdk_path) continue
+
+		const executable = await get_executable(sdk_path)
+		if (!executable) continue
 
 		const current_rpe = await has_current_rpe({
 			executable,
@@ -218,7 +218,7 @@ export async function prompt_install_rpe({
 	const version = get_version(executable)
 
 	if (semver.lt(version.semver, "8.2.0")) {
-		await prompt_not_rpy8_invalid_configuration(version.display)
+		await prompt_not_rpy8_invalid_configuration(version.display, project)
 		return
 	}
 

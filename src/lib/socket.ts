@@ -341,7 +341,11 @@ export class WarpSocketService {
 				)
 
 				if (picked === "Update") {
-					const sdk_path = await get_sdk_path()
+					const sdk_path = await get_sdk_path(
+						this.context,
+						true,
+						socket_project_root
+					)
 					if (!sdk_path) return undefined
 
 					const executable = await get_executable(sdk_path)

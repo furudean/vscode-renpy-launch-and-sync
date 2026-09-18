@@ -61,7 +61,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 
 	init_config_cache(context)
 
-	const status_bar = new StatusBar()
+	const status_bar = new StatusBar(context)
 	const follow_cursor = new FollowCursorService({ status_bar })
 	const pm = new ProcessManager()
 	const ds = new DecorationService({ context })
@@ -128,10 +128,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 	register_commands(context, pm, status_bar, follow_cursor, wss)
 	register_handlers(context, pm, wss)
 
-	if (
-		get_config("renpyExtensionsEnabled") === "Enabled" &&
-		get_config("sdkPath")
-	) {
+	if (get_config("renpyExtensionsEnabled") === "Enabled") {
 		update_existing_rpes(context).catch((error) => {
 			logger.error(error)
 			vscode.window

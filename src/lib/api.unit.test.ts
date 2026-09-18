@@ -3,7 +3,6 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import {
-	fetch_sdk_channels,
 	find_sdk_in_nginx_dir,
 	find_sdk_in_nightly_index,
 	get_sum_for_sdk,
@@ -28,8 +27,7 @@ const pages: Record<string, string> = {
 	"https://renpy.org/dl/8.5.3/checksums.txt": "checksums.txt",
 	"https://nightly.renpy.org/": "nightly.html",
 	"https://nightly.renpy.org/8.6.0.26091304+nightly/":
-		"nightly-8.6.0.26091304.html",
-	"https://renpy.org/channels.json": "channels.json"
+		"nightly-8.6.0.26091304.html"
 }
 
 async function fake_fetch(input: string | URL, init?: RequestInit) {
@@ -120,13 +118,6 @@ describe("remote sdk index", () => {
 		)
 
 		assert.equal(sum, undefined)
-	})
-
-	test("parses the channel list", async () => {
-		const channels = await fetch_sdk_channels("https://renpy.org/channels.json")
-		const release = channels.releases.find((c) => c.channel === "Release")
-
-		assert.deepEqual(release?.split_version.slice(0, 3), [8, 5, 3])
 	})
 })
 

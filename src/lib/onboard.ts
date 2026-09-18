@@ -59,7 +59,8 @@ export async function prompt_configure_extensions(
 }
 
 export async function prompt_not_rpy8_invalid_configuration(
-	version_str: string
+	version_str: string,
+	project_root?: string
 ) {
 	const selection = await vscode.window.showWarningMessage(
 		`Ren'Py version must be 8.2.0 or newer to use extensions (is ${version_str})`,
@@ -69,7 +70,7 @@ export async function prompt_not_rpy8_invalid_configuration(
 	)
 
 	if (selection === "Update SDK Path") {
-		vscode.commands.executeCommand("renpyWarp.setSdkPath")
+		vscode.commands.executeCommand("renpyWarp.setSdkPath", project_root)
 		return
 	}
 

@@ -12,12 +12,12 @@ const logger = get_logger()
 
 export const paths = env_paths(pkg_name, { suffix: "" })
 
-/**
- * @param {string} str
- * @returns {string}
- */
 export function resolve_path(str: string): string {
 	return path.resolve(untildify(str))
+}
+
+export function is_explicit_path(value: string): boolean {
+	return path.isAbsolute(untildify(value))
 }
 
 export async function path_exists(path: string): Promise<boolean> {

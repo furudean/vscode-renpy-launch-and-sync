@@ -1,16 +1,12 @@
 import * as vscode from "vscode"
-import { get_config, set_config, show_file } from "./config"
+import { get_config, show_file } from "./config"
 import { launch_renpy, launch_sdk } from "./launch"
 import { prompt_configure_extensions } from "./onboard"
 import {
 	find_projects_in_workspaces,
 	prompt_projects_in_workspaces
 } from "./path"
-import {
-	get_sdk_path,
-	prompt_sdk_quick_pick,
-	prompt_install_sdk_picker
-} from "./sdk"
+import { get_sdk_path, prompt_sdk_quick_pick } from "./sdk"
 import { prompt_install_rpe, uninstall_rpes } from "./rpe"
 import { get_executable } from "./sh"
 import { WarpSocketService } from "./socket"
@@ -350,14 +346,14 @@ export function get_commands(
 		"renpyWarp.killAll": () => pm.kill_all(),
 
 		"renpyWarp.installRpe": async () => {
-			const sdk_path = await get_sdk_path()
-			if (!sdk_path) return
-
-			const executable = await get_executable(sdk_path)
-			if (!executable) return
-
 			const projects = await find_projects_in_workspaces()
 			for (const project_root of projects) {
+				const sdk_path = await get_sdk_path(context, true, project_root)
+				if (!sdk_path) continue
+
+				const executable = await get_executable(sdk_path)
+				if (!executable) continue
+
 				await prompt_install_rpe({
 					project: project_root,
 					executable,
@@ -367,7 +363,7 @@ export function get_commands(
 		},
 
 		"renpyWarp.uninstallRpe": async () => {
-			const sdk_path = await get_sdk_path()
+			const sdk_path = await get_sdk_path(context, false)
 			if (!sdk_path) return
 
 			for (const folder of vscode.workspace.workspaceFolders ?? []) {
@@ -378,21 +374,17 @@ export function get_commands(
 			)
 		},
 
-		"renpyWarp.setSdkPath": async (): Promise<string | undefined> => {
-			const fs_path = await prompt_sdk_quick_pick(context)
+		"renpyWarp.setSdkPath": async (
+			...args: unknown[]
+		): Promise<string | undefined> => {
+			const project_root = args[0] as string | undefined
+			const fs_path = await prompt_sdk_quick_pick(context, project_root)
 
-			if (!fs_path) return undefined
-			await set_config("sdkPath", fs_path, true)
-
-			return fs_path
-		},
-
-		"renpyWarp.downloadSdk": async () => {
-			await prompt_install_sdk_picker(context)
+			return fs_path || undefined
 		},
 
 		"renpyWarp.setExtensionsPreference": async () => {
-			const sdk_path = await get_sdk_path()
+			const sdk_path = await get_sdk_path(context)
 			if (!sdk_path) return
 
 			const executable = await get_executable(sdk_path, true)
@@ -422,7 +414,7 @@ export function get_commands(
 		},
 
 		"renpyWarp.launchSDK": async () => {
-			const sdk_path = await get_sdk_path()
+			const sdk_path = await get_sdk_path(context)
 			if (!sdk_path) return
 
 			const executable = await get_executable(sdk_path, true)
@@ -436,7 +428,7 @@ export function get_commands(
 				const project_root = await prompt_projects_in_workspaces(context)
 				if (!project_root) return
 
-				const sdk_path = await get_sdk_path()
+				const sdk_path = await get_sdk_path(context, true, project_root)
 				if (!sdk_path) return
 
 				// same place the launcher writes its lint report

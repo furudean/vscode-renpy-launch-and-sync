@@ -172,12 +172,7 @@
 			},
 			{
 				"command": "renpyWarp.setSdkPath",
-				"title": "Set Ren'Py SDK path",
-				"category": "Ren'Py Launch"
-			},
-			{
-				"command": "renpyWarp.downloadSdk",
-				"title": "Download new Ren'Py SDK",
+				"title": "Set Ren'Py SDK",
 				"category": "Ren'Py Launch"
 			},
 			{
@@ -310,12 +305,6 @@
 		"configuration": {
 			"title": "Ren'Py Launch and Sync",
 			"properties": {
-				"renpyWarp.sdkPath": {
-					"type": "string",
-					"markdownDescription": "Path to the Ren'Py SDK on this machine. The extension will not work without this set.\n\nThis should be an absolute path, or a path starting with `~` to indicate the home directory.",
-					"order": 0,
-					"scope": "machine-overridable"
-				},
 				"renpyWarp.strategy": {
 					"type": "string",
 					"default": "Update Window",
@@ -436,7 +425,7 @@
 				"renpyWarp.editor": {
 					"type": "string",
 					"default": "launcher/Visual Studio Code (System).edit.py",
-					"markdownDescription": "The `Editor` class to supply to `renpy.sh`. Should be a relative or absolute path to an `.edit.py` file.\n\nThis setting is equivalent to the environment variable [`RENPY_EDIT_PY`](https://www.renpy.org/doc/html/editor.html).\n\nRelative paths are resolved from `#renpyWarp.sdkPath#`. For example, a valid value would be [`launcher/System Editor.edit.py`](https://github.com/renpy/renpy/blob/master/launcher/System%20Editor.edit.py).\n\n"
+					"markdownDescription": "The `Editor` class to supply to `renpy.sh`. Should be a relative or absolute path to an `.edit.py` file.\n\nThis setting is equivalent to the environment variable [`RENPY_EDIT_PY`](https://www.renpy.org/doc/html/editor.html).\n\nRelative paths are resolved from the SDK path. For example, a valid value would be [`launcher/System Editor.edit.py`](https://github.com/renpy/renpy/blob/master/launcher/System%20Editor.edit.py).\n\n"
 				},
 				"renpyWarp.processEnvironment": {
 					"type": "object",

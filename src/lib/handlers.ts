@@ -41,38 +41,47 @@ export function register_handlers(
 		"renpyWarp.renpyExtensionsEnabled",
 		get_config("renpyExtensionsEnabled") === "Enabled"
 	)
-	const server_on_change = vscode.workspace.onDidChangeConfiguration(
-		async (e) => {
-			if (
-				e.affectsConfiguration("renpyWarp.autoStartSocketServer") ||
-				e.affectsConfiguration("renpyWarp.renpyExtensionsEnabled") ||
-				e.affectsConfiguration("renpyWarp.sdkPath")
-			) {
-				await update_existing_rpes(context)
+	const on_server_relevant_change = async () => {
+		await update_existing_rpes(context)
 
-				logger.info("server settings changed")
-				if (
-					get_config("autoStartSocketServer") &&
-					get_config("renpyExtensionsEnabled") === "Enabled"
-				) {
-					wss.start()
-				} else {
-					wss.close()
-					const sdk_path = await get_sdk_path(false)
-					if (sdk_path) {
-						for (const folder of vscode.workspace.workspaceFolders ?? []) {
-							await uninstall_rpes(folder.uri)
-						}
-					}
+		logger.info("server settings changed")
+		if (
+			get_config("autoStartSocketServer") &&
+			get_config("renpyExtensionsEnabled") === "Enabled"
+		) {
+			wss.start()
+		} else {
+			wss.close()
+			const sdk_path = await get_sdk_path(context, false)
+			if (sdk_path) {
+				for (const folder of vscode.workspace.workspaceFolders ?? []) {
+					await uninstall_rpes(folder.uri)
 				}
-
-				vscode.commands.executeCommand(
-					"setContext",
-					"renpyWarp.renpyExtensionsEnabled",
-					get_config("renpyExtensionsEnabled") === "Enabled"
-				)
 			}
 		}
+
+		vscode.commands.executeCommand(
+			"setContext",
+			"renpyWarp.renpyExtensionsEnabled",
+			get_config("renpyExtensionsEnabled") === "Enabled"
+		)
+	}
+
+	const server_on_change = vscode.workspace.onDidChangeConfiguration((e) => {
+		if (
+			e.affectsConfiguration("renpyWarp.autoStartSocketServer") ||
+			e.affectsConfiguration("renpyWarp.renpyExtensionsEnabled")
+		) {
+			on_server_relevant_change()
+		}
+	})
+
+	const version_file_watcher = vscode.workspace.createFileSystemWatcher(
+		"**/.renpy-version"
 	)
-	context.subscriptions.push(server_on_change)
+	version_file_watcher.onDidCreate(on_server_relevant_change)
+	version_file_watcher.onDidChange(on_server_relevant_change)
+	version_file_watcher.onDidDelete(on_server_relevant_change)
+
+	context.subscriptions.push(server_on_change, version_file_watcher)
 }

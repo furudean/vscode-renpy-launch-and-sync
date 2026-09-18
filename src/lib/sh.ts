@@ -214,7 +214,8 @@ export async function get_editor_cli_path(): Promise<string | undefined> {
  */
 export async function get_executable(
 	sdk_path: string,
-	prompt = false
+	prompt = false,
+	project_root?: string
 ): Promise<string[] | undefined> {
 	if (!(await path_is_sdk(sdk_path))) {
 		logger.debug("not valid sdk", sdk_path)
@@ -224,7 +225,7 @@ export async function get_executable(
 				.showErrorMessage("Ren'Py SDK path is invalid", "Update SDK Path")
 				.then((selection) => {
 					if (selection === "Update SDK Path") {
-						vscode.commands.executeCommand("renpyWarp.setSdkPath")
+						vscode.commands.executeCommand("renpyWarp.setSdkPath", project_root)
 					}
 				})
 		}

@@ -10,9 +10,101 @@ import { basename } from "node:path"
 import { createHash } from "node:crypto"
 import { createReadStream } from "node:fs"
 import extract from "extract-zip"
-import { get_sum_for_sdk } from "./api"
+import {
+	find_sdk_in_nginx_dir,
+	find_sdk_in_nightly_index,
+	get_sum_for_sdk,
+	list_nightly_sdks,
+	list_remote_sdks
+} from "./api"
 
 const logger = get_logger()
+
+async function find_remote_sdk_by_name(
+	version: string
+): Promise<{ url: URL; nightly: boolean } | undefined> {
+	const [stable, nightly] = await Promise.all([
+		list_remote_sdks(),
+		list_nightly_sdks()
+	])
+
+	const stable_match = stable.find((sdk) => sdk.name === version)
+	if (stable_match) return { url: stable_match.url, nightly: false }
+
+	const nightly_match = nightly.find((sdk) => sdk.name === version)
+	if (nightly_match) return { url: nightly_match.url, nightly: true }
+
+	return undefined
+}
+
+// tracks in-flight downloads by version so two callers racing on the same
+// undownloaded version share one download instead of both unpacking the
+// same archive at once
+const in_flight_sdk_downloads = new Map<string, Promise<string | undefined>>()
+
+async function ensure_sdk_download_permission(
+	context: ExtensionContext,
+	version: string
+): Promise<boolean> {
+	if (context.globalState.get<boolean>("renpyWarp.alwaysDownloadSdk"))
+		return true
+
+	const selection = await vscode.window.showInformationMessage(
+		`Ren'Py Warp needs to download the Ren'Py SDK ${version} to do this.`,
+		"Always download",
+		"Download this time",
+		"Stop"
+	)
+
+	if (selection === "Always download") {
+		await context.globalState.update("renpyWarp.alwaysDownloadSdk", true)
+		return true
+	}
+
+	return selection === "Download this time"
+}
+
+export async function get_or_download_sdk_path(
+	version: string,
+	context: ExtensionContext,
+	allow_download = true
+): Promise<string | undefined> {
+	const existing = await get_downloaded_sdk(version, context)
+	if (existing) return existing
+
+	logger.warn(`sdk version "${version}" is not downloaded`)
+	if (!allow_download) return undefined
+
+	const in_flight = in_flight_sdk_downloads.get(version)
+	if (in_flight) return in_flight
+
+	const download_promise = (async () => {
+		const remote = await find_remote_sdk_by_name(version)
+		if (!remote) {
+			vscode.window.showErrorMessage(
+				`Could not find Ren'Py SDK "${version}" to download.`
+			)
+			return undefined
+		}
+
+		if (!(await ensure_sdk_download_permission(context, version))) {
+			return undefined
+		}
+
+		const sdk_url = remote.nightly
+			? await find_sdk_in_nightly_index(remote.url)
+			: await find_sdk_in_nginx_dir(remote.url)
+
+		return await download_sdk(sdk_url, version, context)
+	})()
+
+	in_flight_sdk_downloads.set(version, download_promise)
+	try {
+		return await download_promise
+	} finally {
+		in_flight_sdk_downloads.delete(version)
+	}
+}
 
 function get_md5_hash(path: string): Promise<string> {
 	return new Promise((resolve, reject) => {
@@ -143,6 +235,14 @@ export async function list_downloaded_sdks(
 	const sdk_paths = sdk_uris.map((uri) => uri.fsPath)
 
 	return p_filter(sdk_paths, path_is_sdk)
+}
+
+export async function get_downloaded_sdk(
+	name: string,
+	context: ExtensionContext
+): Promise<string | undefined> {
+	const downloaded_sdks = await list_downloaded_sdks(context)
+	return downloaded_sdks.find((sdk_path) => basename(sdk_path) === name)
 }
 
 export async function uninstall_sdk(

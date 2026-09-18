@@ -8,19 +8,6 @@ export interface RemoteSdk {
 	semver: SemVer | null
 }
 
-export interface Channel {
-	channel: string
-	description: string
-	pretty_version: string
-	split_version: [number, number, number]
-	timestamp: number
-	url: string
-}
-
-export interface Channels {
-	releases: Channel[]
-}
-
 async function fetch_and_parse_nginx_directory(
 	url: string | URL
 ): Promise<URL[]> {
@@ -72,14 +59,6 @@ export function semver_compare(a: string, b: string): number {
 	}
 
 	return a.localeCompare(b) // neither are valid semvers, compare by name
-}
-
-export async function fetch_sdk_channels(url: string): Promise<Channels> {
-	const request = await fetch(url)
-
-	const channels = (await request.json()) as Channels
-
-	return channels
 }
 
 export function sort_remote_sdks(a: RemoteSdk, b: RemoteSdk): number {

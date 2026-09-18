@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## Unreleased
+
+- Replace the `renpyWarp.sdkPath` setting with a `.renpy-version` file
+- The SDK picker is now a single cached list of known SDK versions. Selecting a
+  version records it in `.renpy-version`.
+- As a result of the above, `renpyWarp.downloadSdk` command is removed
+- Required versions will be downloaded on demand
+- Nightly versions of Ren'Py are more clearly visually displayed
+
 ## 4.0.0 - 2026-09-15
 
 - Rewrite of cursor tracking. Now places the a highlight on the current dialogue

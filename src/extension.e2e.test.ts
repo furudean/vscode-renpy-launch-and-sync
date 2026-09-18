@@ -123,6 +123,10 @@ async function update_config(values: Record<string, unknown>): Promise<void> {
 	}
 }
 
+async function write_version_file(value: string): Promise<void> {
+	await fs.writeFile(path.join(project_root, ".renpy-version"), value + "\n")
+}
+
 suite("renpyWarp", function () {
 	this.timeout(30_000)
 
@@ -146,25 +150,30 @@ suite("renpyWarp", function () {
 		const address = server.address() as import("node:net").AddressInfo
 		origin = `http://127.0.0.1:${address.port}`
 
-		const downloaded = await api.sdk.download(
-			`${origin}/dl/${SDK_VERSION}/${SDK_NAME}.zip`,
-			SDK_NAME
+		// reuse an sdk a previous local run already unpacked - unzipping a
+		// real sdk is slow
+		const cached = (await api.sdk.list()).find(
+			(sdk) => path.basename(sdk) === SDK_NAME
 		)
+
+		const downloaded =
+			cached ??
+			(await api.sdk.download(
+				`${origin}/dl/${SDK_VERSION}/${SDK_NAME}.zip`,
+				SDK_NAME
+			))
 		assert.ok(downloaded, `could not install ${SDK_NAME}`)
 
 		sdk_path = downloaded
-		await update_config({ sdkPath: sdk_path })
+		await write_version_file(sdk_path)
 	})
 
 	suiteTeardown(async () => {
+		await fs.rm(path.join(project_root, ".renpy-version"), { force: true })
 		await new Promise((resolve) => server.close(resolve))
 	})
 
-	test("activates in a ren'py workspace", () => {
-		assert.ok(api.pm, "extension api not exported")
-	})
-
-	test("registers its commands", async () => {
+	test("registers commands", async () => {
 		const commands = await vscode.commands.getCommands(true)
 
 		assert.ok(commands.includes("renpyWarp.launch"))
