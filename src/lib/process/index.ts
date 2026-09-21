@@ -269,7 +269,9 @@ export class UnmanagedProcess {
 	async console(code: string): Promise<{ text: string; is_error: boolean }> {
 		const nonce = ++this.console_nonce
 
-		const result = new Promise<{ text: string; is_error: boolean }>(
+		await this.ipc({ type: "console", nonce, code })
+
+		return new Promise<{ text: string; is_error: boolean }>(
 			(resolve, reject) => {
 				const timeout = setTimeout(() => {
 					this.off("socketMessage", on_message)
@@ -288,10 +290,6 @@ export class UnmanagedProcess {
 				this.on("socketMessage", on_message)
 			}
 		)
-
-		await this.ipc({ type: "console", nonce, code })
-
-		return result
 	}
 }
 

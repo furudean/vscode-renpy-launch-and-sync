@@ -781,7 +781,11 @@ export async function start_renpy({
 }
 
 /** gives a process a debug session of its own unless it already has one */
-async function attach_to(rpp: AnyProcess, pm: ProcessManager): Promise<void> {
+async function attach_to(
+	rpp: AnyProcess,
+	pm: ProcessManager,
+	wss: WarpSocketService
+): Promise<void> {
 	const folder = vscode.workspace.getWorkspaceFolder(
 		vscode.Uri.file(rpp.project_root)
 	)
@@ -794,17 +798,16 @@ async function attach_to(rpp: AnyProcess, pm: ProcessManager): Promise<void> {
 		internalConsoleOptions: "neverOpen"
 	}
 
-	// a tracked process is meant to always have a session, so leaving it in
-	// `pm` unbound would strand it: never picked up by a debug session, yet
-	// still shown as live by the status bar and follow cursor. drop it
-	// instead and say so out loud
-	const give_up = (error?: unknown) => {
+	function give_up(error?: unknown): void {
 		logger.error(`could not start a debug session for pid ${rpp.pid}`, error)
 		vscode.window.showErrorMessage(
-			`Could not start a debug session for Ren'Py process ${rpp.pid}. It has been dropped from tracking.`,
+			`Could not start a debug session for Ren'Py process ${rpp.pid}`,
 			"OK"
 		)
+		wss.forget(rpp.pid)
+		rpp.emit("exit")
 		pm.forget(rpp)
+		rpp.dispose()
 	}
 
 	try {
@@ -836,7 +839,7 @@ export function register_debugger(
 	const on_attach = (rpp: AnyProcess) => {
 		if (rpp.debug_session_id) return
 
-		attach_to(rpp, pm)
+		attach_to(rpp, pm, wss)
 	}
 	pm.on("attach", on_attach)
 

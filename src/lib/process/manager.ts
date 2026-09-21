@@ -1,4 +1,4 @@
-import { AnyProcess } from "."
+import { AnyProcess, ManagedProcess } from "."
 import { EventEmitter } from "node:events"
 import { get_logger } from "../log"
 
@@ -68,9 +68,13 @@ export class ProcessManager {
 		this.processes.clear()
 
 		for (const process of processes) {
-			process.kill().catch((error) => {
-				logger.error(`failed to kill process ${process.pid}:`, error)
-			})
+			if (process instanceof ManagedProcess) {
+				process.kill().catch((error) => {
+					logger.error(`failed to kill process ${process.pid}:`, error)
+				})
+			} else {
+				process.dispose()
+			}
 		}
 	}
 
