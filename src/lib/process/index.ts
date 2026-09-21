@@ -11,7 +11,6 @@ import {
 	SocketMessage
 } from "../socket"
 import { process_finished } from "../sh"
-import TailFile from "@logdna/tail-file"
 import split2 from "split2"
 import { is_system_label } from "../label"
 
@@ -295,18 +294,15 @@ export class UnmanagedProcess {
 
 interface ManagedProcessOptions extends Omit<UnmanagedProcessOptions, "pid"> {
 	process: ChildProcess
-	log_file: string
 }
 
 export class ManagedProcess extends UnmanagedProcess {
 	private process: child_process.ChildProcess
-	private tail: TailFile
-	log_file: string
 	exit_code?: number | null
 
 	private output_backlog: string[] = []
 
-	constructor({ process, project_root, log_file }: ManagedProcessOptions) {
+	constructor({ process, project_root }: ManagedProcessOptions) {
 		if (!process.pid) {
 			throw new Error("process must have a pid")
 		}
@@ -319,16 +315,8 @@ export class ManagedProcess extends UnmanagedProcess {
 
 		this.process = process
 		this.project_root = project_root
-		this.log_file = log_file
 
-		logger.info(`logging process ${this.pid} to ${log_file}`)
-
-		this.tail = new TailFile(log_file, {
-			encoding: "utf8"
-		})
-		this.tail.start()
-
-		this.tail.pipe(split2()).on("data", (line: string) => {
+		const on_line = (line: string) => {
 			// the debug console is the only place process output goes, so hold
 			// on to whatever arrives before a session binds
 			if (this.emit("output", line)) return
@@ -338,16 +326,15 @@ export class ManagedProcess extends UnmanagedProcess {
 			}
 
 			logger.debug(`process ${this.pid} >`, line)
-		})
+		}
 
-		this.process.on("close", async (code) => {
+		this.process.stdout?.pipe(split2()).on("data", on_line)
+		this.process.stderr?.pipe(split2()).on("data", on_line)
+
+		this.process.on("close", (code) => {
 			this.dead = true
 			this.exit_code = code
 			logger.info(`process ${this.pid} exited with code ${code}`)
-
-			// drained first, so the last lines the game wrote reach the debug
-			// console before the session hears that it is over
-			await this.tail.quit()
 
 			this.emit("exit")
 		})
@@ -377,9 +364,6 @@ export class ManagedProcess extends UnmanagedProcess {
 	dispose(): void {
 		super.dispose()
 		this.process.unref()
-		this.tail.quit().catch((err) => {
-			logger.error("error stopping tail:", err)
-		})
 	}
 }
 

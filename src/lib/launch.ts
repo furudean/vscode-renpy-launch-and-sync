@@ -5,7 +5,7 @@ import fs from "node:fs/promises"
 
 import { ProcessManager, ManagedProcess, AnyProcess } from "./process"
 import { get_config } from "./config"
-import { get_log_file, get_logger } from "./log"
+import { get_logger } from "./log"
 import {
 	get_editor_path,
 	get_executable,
@@ -20,7 +20,6 @@ import {
 } from "./path"
 import { prompt_configure_extensions } from "./onboard"
 import { WarpSocketService } from "./socket"
-import TailFile from "@logdna/tail-file/lib/tail-file"
 import split2 from "split2"
 import { get_sdk_path } from "./sdk"
 
@@ -210,21 +209,14 @@ export async function launch_renpy({
 		async (_, cancel) => {
 			logger.info("spawning process:", cmds.map((k) => `"${k}"`).join(" "))
 
-			const { log_file, file_handle } = await get_log_file(
-				`process-${nonce}.log`
-			)
-
 			const process = child_process.spawn(cmds[0], cmds.slice(1), {
 				env: process_env,
 				detached: true,
-				stdio: ["ignore", file_handle.fd, file_handle.fd]
+				stdio: ["ignore", "pipe", "pipe"]
 			})
 			process.on("error", (e) => {
 				logger.error("process error:", e)
 			})
-
-			// close the file handle for parent process, since the child has a copy
-			file_handle.close()
 
 			if (!process.pid) {
 				throw new Error("failed to start process")
@@ -234,11 +226,7 @@ export async function launch_renpy({
 
 			const rpp = new ManagedProcess({
 				process,
-				project_root,
-				log_file
-			})
-			rpp.on("exit", () => {
-				file_handle.close()
+				project_root
 			})
 
 			cancel.onCancellationRequested(() => {
@@ -308,43 +296,31 @@ export async function launch_sdk({
 					await register_workspace_projects_with_launcher(projects, sdk_path)
 				}
 
-				const { file_handle, log_file } = await get_log_file(
-					`launcher-${new Date().toISOString()}.log`
-				)
-
 				const pp = child_process.spawn(executable[0], {
 					env: process_env,
 					detached: true,
-					stdio: ["ignore", file_handle.fd, file_handle.fd]
+					stdio: ["ignore", "pipe", "pipe"]
 				})
 				pp.on("error", (e) => {
 					logger.error("process error:", e)
 				})
 
-				// close the file handle for parent process, since the child has a copy
-				file_handle.close()
-
-				logger.info(`logging process ${pp.pid} to ${log_file}`)
-
-				const tail = new TailFile(log_file, {
-					encoding: "utf8"
-				})
-				tail.start()
-
 				// the launcher is never a tracked process, so it has no debug
 				// console of its own to write to
-				tail.pipe(split2()).on("data", (line: string) => {
+				const on_line = (line: string) =>
 					logger.debug(`launcher ${pp.pid} >`, line)
-				})
+				pp.stdout?.pipe(split2()).on("data", on_line)
+				pp.stderr?.pipe(split2()).on("data", on_line)
 
-				pp.on("close", async (code) => {
+				pp.on("close", (code) => {
 					logger.info(`launcher process ${pp.pid} exited with code ${code}`)
-					await tail.quit()
 				})
 
 				if (!pp.pid) {
 					throw new Error("failed to start process")
 				}
+
+				logger.info("successfully spawned launcher process", pp.pid)
 			}
 		)
 	}

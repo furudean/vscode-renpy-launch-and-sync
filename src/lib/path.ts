@@ -4,13 +4,9 @@ import untildify from "untildify"
 import fs from "node:fs/promises"
 import { get_logger } from "./log"
 import { get_user_ignore_pattern } from "./config"
-import env_paths from "env-paths"
-import { name as pkg_name } from "../../package.json"
 import sortPaths from "sort-paths"
 
 const logger = get_logger()
-
-export const paths = env_paths(pkg_name, { suffix: "" })
 
 export function resolve_path(str: string): string {
 	return path.resolve(untildify(str))

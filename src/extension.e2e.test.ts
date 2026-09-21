@@ -76,15 +76,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // ren'py reports 1-based lines, the editor works in 0-based ones
 const editor_line = (line: number) => line - 1
 
-async function log_tail(process: AnyProcess | undefined): Promise<string> {
-	if (!process || !("log_file" in process)) return ""
+function log_tail(process: AnyProcess | undefined): string {
+	if (!process || !("take_output_backlog" in process)) return ""
 
-	try {
-		const log = await fs.readFile(process.log_file, "utf8")
-		return "\n\nren'py log:\n" + log.split("\n").slice(-30).join("\n")
-	} catch {
-		return ""
-	}
+	const lines = (process as ManagedProcess).take_output_backlog()
+	if (lines.length === 0) return ""
+
+	return "\n\nren'py log:\n" + lines.slice(-30).join("\n")
 }
 
 async function wait_for(
@@ -99,12 +97,10 @@ async function wait_for(
 
 	while (!predicate()) {
 		if (process?.dead) {
-			throw new Error(`process died before ${what}` + (await log_tail(process)))
+			throw new Error(`process died before ${what}` + log_tail(process))
 		}
 		if (Date.now() > deadline) {
-			throw new Error(
-				`timed out waiting for ${what}` + (await log_tail(process))
-			)
+			throw new Error(`timed out waiting for ${what}` + log_tail(process))
 		}
 		await sleep(100)
 	}
@@ -499,7 +495,10 @@ suite("renpyWarp", function () {
 			const discovered = api.pm.at(0)!
 			assert.strictEqual(discovered.pid, launched.pid)
 
-			assert.ok(!("log_file" in discovered), "process was tracked as managed")
+			assert.ok(
+				!("take_output_backlog" in discovered),
+				"process was tracked as managed"
+			)
 			assert.notStrictEqual(discovered, launched)
 
 			await wait_for(() => discovered.socket_ready, "the rpe to connect", {

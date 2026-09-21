@@ -459,17 +459,14 @@ export function get_commands(
 					)
 					.then((selection) => {
 						if (selection !== "Open Output") return
-						if (p) show_file(p.log_file)
-						else logger.show()
+						logger.show()
 					})
 			}
 		},
 
 		"renpyWarp.rmpersistent": async () => {
-			let p: Awaited<ReturnType<typeof launch_renpy>>
-
 			try {
-				p = await launch_renpy({
+				await launch_renpy({
 					intent: "Removing persistent data...",
 					command: ["rmpersistent"],
 					register: false,
@@ -491,16 +488,13 @@ export function get_commands(
 					)
 					.then((selection) => {
 						if (selection !== "Open Output") return
-						if (p) show_file(p.log_file)
-						else logger.show()
+						logger.show()
 					})
 			}
 		},
 		"renpyWarp.forceRecompile": async () => {
-			let p: Awaited<ReturnType<typeof launch_renpy>>
-
 			try {
-				p = await launch_renpy({
+				await launch_renpy({
 					intent: "Force recompiling project...",
 					command: ["compile"],
 					register: false,
@@ -518,8 +512,7 @@ export function get_commands(
 					)
 					.then((selection) => {
 						if (selection !== "Open Output") return
-						if (p) show_file(p.log_file)
-						else logger.show()
+						logger.show()
 					})
 			}
 		},

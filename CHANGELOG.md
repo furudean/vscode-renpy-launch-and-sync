@@ -16,6 +16,7 @@ All notable changes to this project will be documented in this file.
 - Per-process output now routes to the _Debug Console_
 - _Open Ren'Py to current line_ no longer shows as an icon button in the
   editor's top-right toolbar. It's still available in other contexts.
+- Process logs are no longer stored on system
 
 ## 4.0.0 - 2026-09-15
 

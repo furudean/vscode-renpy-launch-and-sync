@@ -76,12 +76,10 @@
 		"typescript-eslint": "^8.8.0"
 	},
 	"dependencies": {
-		"@logdna/tail-file": "^4.0.2",
 		"@microsoft/vscode-file-downloader-api": "^1.0.1",
 		"@vscode/debugadapter": "^1.68.0",
 		"@vscode/debugprotocol": "^1.68.0",
 		"adm-zip": "^0.6.1",
-		"env-paths": "^4.0.0",
 		"extract-zip": "^2.0.1",
 		"find-process": "^2.0.0",
 		"get-port": "^7.1.0",
