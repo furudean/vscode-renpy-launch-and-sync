@@ -8,8 +8,14 @@ All notable changes to this project will be documented in this file.
 - The SDK picker is now a single cached list of known SDK versions. Selecting a
   version records it in `.renpy-version`.
 - As a result of the above, `renpyWarp.downloadSdk` command is removed
-- Required versions will be downloaded on demand
+- Required versions will be downloaded on demand as opposed to when selected
 - Nightly versions of Ren'Py are more clearly visually displayed
+- Now implements the VSCode debugger protocol for connected games.
+- The status bar no longer startcs games. Starting and stopping happen through
+  the _Run and Debug_ view.
+- Per-process output now routes to the _Debug Console_
+- _Open Ren'Py to current line_ no longer shows as an icon button in the
+  editor's top-right toolbar. It's still available in other contexts.
 
 ## 4.0.0 - 2026-09-15
 

@@ -49,8 +49,18 @@ export interface CurrentLabelSocketMessage extends SocketMessage {
 	label: string
 }
 
+export interface ConsoleResultSocketMessage extends SocketMessage {
+	type: "console_result"
+	nonce: number
+	text: string
+	is_error: boolean
+}
+
 export type AnySocketMessage =
-	CurrentLineSocketMessage | ListLabelsSocketMessage | CurrentLabelSocketMessage
+	| CurrentLineSocketMessage
+	| ListLabelsSocketMessage
+	| CurrentLabelSocketMessage
+	| ConsoleResultSocketMessage
 
 /** connection details a client presents during the websocket handshake */
 export interface SocketClient {
@@ -143,11 +153,10 @@ export class WarpSocketService {
 
 			this.deny_processes.clear()
 			this.allowed_processes.clear()
+			// every tracked process goes down with the server, which ends the
+			// debug sessions mirroring them
 			this.pm.clear()
-			this.status_bar.update(() => ({
-				socket_server_status: "stopped",
-				processes: new Map()
-			}))
+			this.status_bar.update(() => ({ socket_server_status: "stopped" }))
 			vscode.commands.executeCommand(
 				"setContext",
 				"renpyWarp.socketServerRunning",
@@ -207,6 +216,15 @@ export class WarpSocketService {
 				true
 			)
 		})
+	}
+
+	public forget(pid: number): void {
+		logger.info(`forgetting process ${pid}`)
+
+		this.allowed_processes.delete(pid)
+		this.deny_processes.add(pid)
+
+		this.pm.find_by_pid(pid)?.socket?.close(4001, "forgotten")
 	}
 
 	public close() {
@@ -429,11 +447,9 @@ export class WarpSocketService {
 
 		rpp.on("exit", () => {
 			logger.info(`external process ${pid} exited`)
-			this.status_bar.delete_process(pid)
 		})
 
 		this.pm.add(pid, rpp)
-		this.status_bar.set_process(pid, "idle")
 
 		if (this.context.globalState.get("hideExternalProcessConnected")) {
 			this.status_bar.notify(`$(plug) Connected to Ren'Py process ${pid}`)

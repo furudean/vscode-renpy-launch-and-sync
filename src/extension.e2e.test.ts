@@ -1,6 +1,7 @@
 type ExtensionApi = import("./extension").ExtensionApi
 type AnyProcess = import("./lib/process").AnyProcess
 type ManagedProcess = import("./lib/process").ManagedProcess
+type DebugSession = import("vscode").DebugSession
 
 const assert: typeof import("node:assert") = require("node:assert")
 const path: typeof import("node:path") = require("node:path")
@@ -513,6 +514,583 @@ suite("renpyWarp", function () {
 
 			await (launched as ManagedProcess).wait_for_exit()
 			launched.dispose()
+		})
+	})
+
+	suite("debugging", function () {
+		this.timeout(30_000)
+
+		const sessions = new Set<DebugSession>()
+		const listeners: import("vscode").Disposable[] = []
+
+		const folder = vscode.workspace.workspaceFolders![0]
+
+		const renpy_sessions = (): DebugSession[] =>
+			Array.from(sessions).filter((session) => session.type === "renpyWarp")
+
+		/** the attach session mirroring `pid`, once it has started */
+		const session_for = (pid: number): DebugSession | undefined =>
+			renpy_sessions().find(
+				(session) =>
+					session.configuration.request === "attach" &&
+					session.configuration.pid === pid
+			)
+
+		suiteSetup(() => {
+			listeners.push(
+				vscode.debug.onDidStartDebugSession((session) => sessions.add(session)),
+				vscode.debug.onDidTerminateDebugSession((session) =>
+					sessions.delete(session)
+				)
+			)
+		})
+
+		suiteTeardown(async () => {
+			for (const listener of listeners) listener.dispose()
+			await vscode.commands.executeCommand("renpyWarp.killAll")
+		})
+
+		test("launches the game as a debug session", async () => {
+			const terminated = new Promise<void>((resolve) => {
+				const listener = vscode.debug.onDidTerminateDebugSession(() => {
+					listener.dispose()
+					resolve()
+				})
+			})
+
+			const started = await vscode.debug.startDebugging(folder, {
+				type: "renpyWarp",
+				request: "launch",
+				name: "t",
+				project: project_root
+			})
+			assert.strictEqual(started, true, "debug session did not start")
+
+			assert.strictEqual(api.pm.length, 1)
+			const process = api.pm.at(0)!
+			assert.strictEqual(vscode.debug.activeDebugSession?.type, "renpyWarp")
+
+			await vscode.debug.stopDebugging()
+			await wait_for(() => process.dead, "the game to die")
+			await terminated
+
+			await wait_for(() => api.pm.length === 0, "the process to be forgotten")
+		})
+
+		test("starts a command launch inside a session of its own", async () => {
+			assert.strictEqual(renpy_sessions().length, 0)
+
+			await vscode.commands.executeCommand("renpyWarp.launch")
+
+			const process = api.pm.at(-1)
+			assert.ok(process, "game did not launch")
+
+			// the command goes through the debugger itself, so the process is
+			// born inside a launch session rather than being adopted into one
+			assert.strictEqual(renpy_sessions().length, 1)
+			assert.strictEqual(
+				renpy_sessions()[0].configuration.request,
+				"launch",
+				"process was adopted rather than launched"
+			)
+
+			await vscode.commands.executeCommand("renpyWarp.killAll")
+
+			await wait_for(() => api.pm.length === 0, "the game to die")
+			await wait_for(
+				() => renpy_sessions().length === 0,
+				"the session to terminate"
+			)
+		})
+
+		test("warps the open game rather than starting a second one", async () => {
+			await update_config({
+				renpyExtensionsEnabled: "Enabled",
+				strategy: "Update Window"
+			})
+
+			try {
+				await vscode.commands.executeCommand("renpyWarp.launch")
+
+				const process = api.pm.at(-1)
+				assert.ok(process, "game did not launch")
+				await wait_for(() => process.socket_ready, "the rpe to connect", {
+					process
+				})
+
+				assert.strictEqual(renpy_sessions().length, 1)
+
+				// warping an open window starts nothing, so the session it
+				// already has is the only one
+				await show_line(script, editor_line(7))
+				await vscode.commands.executeCommand("renpyWarp.warpToLine")
+
+				assert.strictEqual(api.pm.length, 1, "a second game was started")
+				assert.strictEqual(renpy_sessions().length, 1, "a second session ran")
+
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await wait_for(() => api.pm.length === 0, "the game to die")
+				await wait_for(
+					() => renpy_sessions().length === 0,
+					"the session to terminate"
+				)
+			} finally {
+				await update_config({
+					renpyExtensionsEnabled: "Disabled",
+					strategy: "Update Window"
+				})
+			}
+		})
+
+		test("sends process output to the debug console", async () => {
+			const output: string[] = []
+			const tracker = vscode.debug.registerDebugAdapterTrackerFactory(
+				"renpyWarp",
+				{
+					createDebugAdapterTracker() {
+						return {
+							onDidSendMessage(message: {
+								type?: string
+								event?: string
+								body?: { output?: string }
+							}) {
+								if (message.type === "event" && message.event === "output") {
+									output.push(message.body?.output ?? "")
+								}
+							}
+						}
+					}
+				}
+			)
+
+			try {
+				await vscode.commands.executeCommand("renpyWarp.launch")
+
+				const process = api.pm.at(-1)
+				assert.ok(process, "game did not launch")
+
+				// the console is the only place process output goes now, and it
+				// gets the lines written before the session bound as well
+				await wait_for(
+					() => output.some((line) => line.includes("Ren'Py")),
+					"ren'py to say something on the console",
+					{ process }
+				)
+
+				assert.ok(
+					output.some((line) => line.includes(String(process.pid))),
+					"the console never named the process"
+				)
+
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await wait_for(() => api.pm.length === 0, "the game to die")
+				await wait_for(
+					() => renpy_sessions().length === 0,
+					"the session to terminate"
+				)
+			} finally {
+				tracker.dispose()
+			}
+		})
+
+		test("resolves the sdk a configuration names", async () => {
+			const resolve = (sdk: string) =>
+				api.debug_provider.resolveDebugConfigurationWithSubstitutedVariables(
+					folder,
+					{
+						type: "renpyWarp",
+						request: "launch",
+						name: "t",
+						project: project_root,
+						sdk
+					}
+				)
+
+			// a managed install is named by its version
+			const by_name = await resolve(SDK_NAME)
+			assert.strictEqual(fs_path(by_name!._sdk_path!), fs_path(sdk_path))
+
+			// anything shaped like a path is one
+			const by_path = await resolve(sdk_path)
+			assert.strictEqual(fs_path(by_path!._sdk_path!), fs_path(sdk_path))
+
+			assert.strictEqual(
+				await resolve(project_root),
+				undefined,
+				"a path holding no sdk was accepted"
+			)
+		})
+
+		test("launches with the sdk a configuration names", async () => {
+			// with no .renpy-version, only the attribute can find an sdk
+			await fs.rm(path.join(project_root, ".renpy-version"), { force: true })
+
+			try {
+				const started = await vscode.debug.startDebugging(folder, {
+					type: "renpyWarp",
+					request: "launch",
+					name: "t",
+					project: project_root,
+					sdk: sdk_path
+				})
+
+				assert.strictEqual(started, true, "debug session did not start")
+				assert.strictEqual(api.pm.length, 1)
+			} finally {
+				await write_version_file(sdk_path)
+			}
+
+			await vscode.commands.executeCommand("renpyWarp.killAll")
+			await wait_for(() => api.pm.length === 0, "the game to die")
+			await wait_for(
+				() => renpy_sessions().length === 0,
+				"the session to terminate"
+			)
+		})
+
+		test("resolves a bare f5 to a launch configuration", async () => {
+			// workbench.action.debug.start would show the debugger quick pick
+			// whenever the ren'py language extension is installed too, so ask
+			// the provider directly
+			const resolved = await api.debug_provider.resolveDebugConfiguration(
+				folder,
+				{} as import("vscode").DebugConfiguration
+			)
+
+			assert.deepStrictEqual(resolved, {
+				type: "renpyWarp",
+				request: "launch",
+				name: "Launch project 'project'",
+				project: "${workspaceFolder}"
+			})
+		})
+
+		test("refuses to attach to a pid it does not track", async () => {
+			assert.strictEqual(renpy_sessions().length, 0)
+
+			const started = await vscode.debug.startDebugging(folder, {
+				type: "renpyWarp",
+				request: "attach",
+				name: "t",
+				pid: 1
+			})
+
+			assert.strictEqual(started, false, "session started anyway")
+			assert.strictEqual(
+				renpy_sessions().length,
+				0,
+				"a session was left behind"
+			)
+			assert.strictEqual(api.pm.length, 0)
+		})
+
+		suite("stepping", function () {
+			this.timeout(30_000)
+
+			suiteSetup(async () => {
+				await update_config({ renpyExtensionsEnabled: "Enabled" })
+			})
+
+			suiteTeardown(async () => {
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await update_config({ renpyExtensionsEnabled: "Disabled" })
+			})
+
+			async function debugging(): Promise<{ process: AnyProcess }> {
+				const started = await vscode.debug.startDebugging(folder, {
+					type: "renpyWarp",
+					request: "launch",
+					name: "t",
+					project: project_root
+				})
+				assert.strictEqual(started, true, "debug session did not start")
+
+				const process = api.pm.at(-1)
+				assert.ok(process, "game did not launch")
+
+				await wait_for(() => process.socket_ready, "the rpe to connect", {
+					process
+				})
+				await process.wait_for_labels(10_000)
+
+				return { process }
+			}
+
+			async function stop(process: AnyProcess): Promise<void> {
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await wait_for(() => process.dead, "the game to die")
+				await wait_for(
+					() => renpy_sessions().length === 0,
+					"the session to terminate"
+				)
+			}
+
+			test("next_checkpoint skips every pause in a dialogue block", async () => {
+				const { process } = await debugging()
+
+				try {
+					await process.jump_to_label("pauses")
+					await wait_for(
+						() => process.last_cursor !== undefined,
+						"ren'py to report the paused line",
+						{ process }
+					)
+					const paused_line = process.last_cursor!.line
+
+					await process.next_checkpoint()
+
+					await wait_for(
+						() => process.last_cursor?.line !== paused_line,
+						"ren'py to move past the paused line",
+						{ process }
+					)
+					assert.strictEqual(
+						process.last_cursor?.what,
+						"After the pauses.",
+						"next_checkpoint stopped inside the pause block"
+					)
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("rollback rolls back to the previous checkpoint", async () => {
+				const { process } = await debugging()
+
+				try {
+					await process.jump_to_label("start")
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to report script.rpy:5",
+						{ process }
+					)
+
+					await process.advance()
+					await wait_for(
+						() => process.last_cursor?.line === 7,
+						"ren'py to report script.rpy:7",
+						{ process }
+					)
+
+					await process.rollback()
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to roll back to script.rpy:5",
+						{ process }
+					)
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("Step Into advances to the next checkpoint", async () => {
+				const { process } = await debugging()
+
+				try {
+					await process.jump_to_label("pauses")
+					await wait_for(
+						() => process.last_cursor !== undefined,
+						"ren'py to report the paused line",
+						{ process }
+					)
+					const paused_line = process.last_cursor!.line
+
+					const session = vscode.debug.activeDebugSession
+					assert.strictEqual(session?.type, "renpyWarp")
+					await session.customRequest("stepIn")
+
+					await wait_for(
+						() => process.last_cursor?.line !== paused_line,
+						"ren'py to move past the paused line",
+						{ process }
+					)
+					assert.strictEqual(
+						process.last_cursor?.what,
+						"After the pauses.",
+						"stepIn stopped inside the pause block"
+					)
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("debug toolbar's Step Out rolls back to the previous checkpoint", async () => {
+				const { process } = await debugging()
+
+				try {
+					await process.jump_to_label("start")
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to report script.rpy:5",
+						{ process }
+					)
+
+					await process.advance()
+					await wait_for(
+						() => process.last_cursor?.line === 7,
+						"ren'py to report script.rpy:7",
+						{ process }
+					)
+
+					const session = vscode.debug.activeDebugSession
+					assert.strictEqual(session?.type, "renpyWarp")
+					await session.customRequest("stepOut")
+
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to roll back to script.rpy:5",
+						{ process }
+					)
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("evaluates an expression typed into the debug console", async () => {
+				const { process } = await debugging()
+
+				try {
+					const session = vscode.debug.activeDebugSession
+					assert.strictEqual(session?.type, "renpyWarp")
+
+					const result = await session.customRequest("evaluate", {
+						expression: "1 + 1",
+						context: "repl"
+					})
+
+					assert.strictEqual(result.result, "2")
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("reports a console error without killing the session", async () => {
+				const { process } = await debugging()
+
+				try {
+					const session = vscode.debug.activeDebugSession
+					assert.strictEqual(session?.type, "renpyWarp")
+
+					await assert.rejects(
+						Promise.resolve(
+							session.customRequest("evaluate", {
+								expression: "1 / 0",
+								context: "repl"
+							})
+						)
+					)
+
+					// the session survived the error, so a follow-up command still
+					// reaches the same running process
+					const result = await session.customRequest("evaluate", {
+						expression: "1 + 1",
+						context: "repl"
+					})
+					assert.strictEqual(result.result, "2")
+				} finally {
+					await stop(process)
+				}
+			})
+
+			test("_return re-enables stepping immediately, without waiting on dialogue", async () => {
+				const { process } = await debugging()
+				const changes: boolean[] = []
+				process.on("canStepChange", (can_step: boolean) =>
+					changes.push(can_step)
+				)
+
+				try {
+					await process.jump_to_label("start")
+					await wait_for(
+						() => process.last_cursor?.line === 5,
+						"ren'py to report script.rpy:5",
+						{ process }
+					)
+
+					await process.jump_to_label("_simulate_menu")
+					await wait_for(
+						() => changes.includes(false),
+						"can_step to turn off while paused"
+					)
+
+					const before_return = changes.length
+
+					// releases the `pause`, letting `_simulate_menu` reach
+					// `jump _return`. nothing said afterwards would trigger a
+					// current_line message, so a change here can only have
+					// come from the `_return` label itself
+					await process.advance()
+
+					await wait_for(
+						() => changes.length > before_return,
+						"a can_step change following _return"
+					)
+					assert.strictEqual(
+						changes[before_return],
+						true,
+						"_return did not immediately re-enable stepping"
+					)
+				} finally {
+					await stop(process)
+				}
+			})
+		})
+
+		suite("external processes", function () {
+			this.timeout(30_000)
+
+			suiteSetup(async () => {
+				await update_config({
+					renpyExtensionsEnabled: "Enabled",
+					autoConnectExternalProcesses: "Always connect"
+				})
+			})
+
+			suiteTeardown(async () => {
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+
+				await update_config({
+					renpyExtensionsEnabled: "Disabled",
+					autoConnectExternalProcesses: "Never connect"
+				})
+			})
+
+			test("gives a process it did not launch a session", async () => {
+				assert.strictEqual(api.pm.length, 0)
+
+				const launched = await api.launch_unmanaged()
+				assert.ok(launched, "process did not launch")
+
+				await wait_for(
+					() => api.pm.length === 1,
+					"the process to be discovered"
+				)
+				const discovered = api.pm.at(0)!
+
+				await wait_for(
+					() => session_for(discovered.pid) !== undefined,
+					"the attach session to start",
+					{ process: discovered }
+				)
+
+				// vscode disconnects an attach session rather than terminating
+				// it, so the game lives on and only stops being tracked
+				await vscode.debug.stopDebugging(session_for(discovered.pid))
+
+				await wait_for(() => api.pm.length === 0, "the process to be dropped", {
+					process: discovered
+				})
+				assert.strictEqual(discovered.dead, false, "the game was killed")
+
+				// the socket server denies a process it was told to forget, so
+				// it does not come back when the rpe reconnects
+				await sleep(1500)
+				assert.strictEqual(api.pm.length, 0, "the process was adopted again")
+
+				await launched.kill()
+				await (launched as ManagedProcess).wait_for_exit()
+				launched.dispose()
+			})
 		})
 	})
 })

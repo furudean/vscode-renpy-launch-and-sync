@@ -13,9 +13,11 @@ import {
 import { process_finished } from "../sh"
 import TailFile from "@logdna/tail-file"
 import split2 from "split2"
-import { is_special_label } from "../label"
+import { is_system_label } from "../label"
 
 export const logger = get_logger()
+
+const BACKLOG_LINES = 1000
 
 interface UnmanagedProcessOptions {
 	pid: number
@@ -32,6 +34,8 @@ export class UnmanagedProcess {
 	labels: string[] | undefined = undefined
 	last_cursor?: CurrentLineSocketMessage = undefined
 	current_label?: string = undefined
+	debug_session_id?: string = undefined
+	can_step: boolean = false
 
 	private emitter = new EventEmitter()
 	emit = this.emitter.emit.bind(this.emitter)
@@ -66,15 +70,30 @@ export class UnmanagedProcess {
 				this.last_cursor = message
 			}
 			if (message.type === "current_label") {
-				if (!is_special_label(message.label)) {
+				if (!is_system_label(message.label)) {
 					this.current_label = message.label
 				}
+
+				const is_plumbing = is_system_label(message.label)
+				// _return fires when context is released to the regular game flow
+				const is_gameplay = !is_plumbing || message.label === "_return"
+				this.set_can_step(is_gameplay)
+			} else if (message.type !== "console_result") {
+				this.set_can_step(true)
 			}
 		})
+
+		this.on("warped", () => this.set_can_step(true))
 
 		this.on("exit", () => {
 			logger.debug(`process ${this.pid} got exit event`)
 		})
+	}
+
+	private set_can_step(can_step: boolean): void {
+		if (can_step === this.can_step) return
+		this.can_step = can_step
+		this.emit("canStepChange", can_step)
 	}
 
 	dispose() {
@@ -172,7 +191,7 @@ export class UnmanagedProcess {
 		if (this.dead) throw new Error(`process ${this.pid} is not running`)
 
 		await this.wait_for_socket(5000).catch((e) => {
-			vscode.window.showErrorMessage("Failed to connect to socket: " + e)
+			logger.error("failed to connect to socket:", e)
 			throw e
 		})
 
@@ -200,11 +219,13 @@ export class UnmanagedProcess {
 	 * 1-indexed line number
 	 */
 	async warp_to_line(file: string, line: number) {
-		return this.ipc({
+		await this.ipc({
 			type: "warp_to_line",
 			file,
 			line
 		})
+
+		this.emit("warped")
 	}
 
 	/**
@@ -224,11 +245,53 @@ export class UnmanagedProcess {
 		})
 	}
 
+	async rollback() {
+		return this.ipc({
+			type: "rollback"
+		})
+	}
+
+	async next_checkpoint() {
+		return this.ipc({
+			type: "next_checkpoint"
+		})
+	}
+
 	async jump_to_label(label: string) {
 		return this.ipc({
 			type: "jump_to_label",
 			label
 		})
+	}
+
+	private console_nonce = 0
+
+	async console(code: string): Promise<{ text: string; is_error: boolean }> {
+		const nonce = ++this.console_nonce
+
+		const result = new Promise<{ text: string; is_error: boolean }>(
+			(resolve, reject) => {
+				const timeout = setTimeout(() => {
+					this.off("socketMessage", on_message)
+					reject(new Error("timed out waiting for console result"))
+				}, 5000)
+
+				const on_message = (message: AnySocketMessage) => {
+					if (message.type !== "console_result" || message.nonce !== nonce)
+						return
+
+					clearTimeout(timeout)
+					this.off("socketMessage", on_message)
+					resolve({ text: message.text, is_error: message.is_error })
+				}
+
+				this.on("socketMessage", on_message)
+			}
+		)
+
+		await this.ipc({ type: "console", nonce, code })
+
+		return result
 	}
 }
 
@@ -241,8 +304,9 @@ export class ManagedProcess extends UnmanagedProcess {
 	private process: child_process.ChildProcess
 	private tail: TailFile
 	log_file: string
-	output_channel?: vscode.OutputChannel
 	exit_code?: number | null
+
+	private output_backlog: string[] = []
 
 	constructor({ process, project_root, log_file }: ManagedProcessOptions) {
 		if (!process.pid) {
@@ -259,11 +323,6 @@ export class ManagedProcess extends UnmanagedProcess {
 		this.project_root = project_root
 		this.log_file = log_file
 
-		this.output_channel = vscode.window.createOutputChannel(
-			`Ren'Py Launch and Sync - Process Output (${this.process.pid})`
-		)
-
-		this.output_channel.appendLine(`process ${this.process.pid} started`)
 		logger.info(`logging process ${this.pid} to ${log_file}`)
 
 		this.tail = new TailFile(log_file, {
@@ -272,11 +331,15 @@ export class ManagedProcess extends UnmanagedProcess {
 		this.tail.start()
 
 		this.tail.pipe(split2()).on("data", (line: string) => {
-			try {
-				this.output_channel?.appendLine(line)
-			} catch {
-				// nothing left to log to
+			// the debug console is the only place process output goes, so hold
+			// on to whatever arrives before a session binds
+			if (this.emit("output", line)) return
+
+			if (this.output_backlog.length < BACKLOG_LINES) {
+				this.output_backlog.push(line)
 			}
+
+			logger.debug(`process ${this.pid} >`, line)
 		})
 
 		this.process.on("close", async (code) => {
@@ -284,11 +347,10 @@ export class ManagedProcess extends UnmanagedProcess {
 			this.exit_code = code
 			logger.info(`process ${this.pid} exited with code ${code}`)
 
+			// drained first, so the last lines the game wrote reach the debug
+			// console before the session hears that it is over
 			await this.tail.quit()
-			this.output_channel?.appendLine(`process exited with code ${code}`)
 
-			// emitted only once the output channel's final write above has gone
-			// through, so callers can safely dispose it upon seeing "exit"
 			this.emit("exit")
 		})
 	}
@@ -307,10 +369,16 @@ export class ManagedProcess extends UnmanagedProcess {
 		})
 	}
 
+	take_output_backlog(): string[] {
+		const backlog = this.output_backlog
+		this.output_backlog = []
+
+		return backlog
+	}
+
 	dispose(): void {
 		super.dispose()
 		this.process.unref()
-		this.output_channel?.dispose()
 		this.tail.quit().catch((err) => {
 			logger.error("error stopping tail:", err)
 		})

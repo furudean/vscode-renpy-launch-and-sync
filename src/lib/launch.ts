@@ -26,6 +26,59 @@ import { get_sdk_path } from "./sdk"
 
 export const logger = get_logger()
 
+/**
+ * @param line
+ * zero-indexed line number
+ *
+ * @returns
+ * the process it warped, or undefined where a new window is called for
+ */
+export async function warp_game({
+	pm,
+	status_bar,
+	file,
+	line,
+	project_root: given_project_root
+}: {
+	pm: ProcessManager
+	status_bar: StatusBar
+	file?: string
+	line?: number
+	project_root?: string
+}): Promise<AnyProcess | undefined> {
+	if (
+		!file ||
+		line === undefined ||
+		!Number.isInteger(line) ||
+		pm.length === 0 ||
+		get_config("strategy") !== "Update Window" ||
+		get_config("renpyExtensionsEnabled") !== "Enabled"
+	) {
+		return undefined
+	}
+
+	const project_root = given_project_root ?? find_project_root(file)
+	logger.debug("game root:", project_root)
+
+	if (!project_root) return undefined
+
+	logger.info("warping in existing window")
+
+	const filename_relative = path.relative(
+		path.join(project_root, "game/"),
+		file
+	)
+	const rpp = pm.at(-1) as AnyProcess
+
+	await rpp.warp_to_line(filename_relative, line + 1)
+
+	status_bar.notify(
+		`$(debug-line-by-line) Warped to ${filename_relative}:${line + 1}`
+	)
+
+	return rpp
+}
+
 interface LaunchRenpyOptions {
 	intent?: string
 	/**
@@ -37,24 +90,25 @@ interface LaunchRenpyOptions {
 	line?: number
 	context: vscode.ExtensionContext
 	pm: ProcessManager
-	status_bar: StatusBar
 	wss: WarpSocketService
 	extra_environment?: Record<string, string | undefined>
 	/** optional command and its arguments to pass to process */
 	command?: string[]
-	/** project to run. if unset, detected from `file` or the workspace */
+	/** project to run. falls back to workspace if none */
 	project_root?: string
+	/** sdk to run with. falls back to workspace if none */
+	sdk_path?: string
+	debug_session_id?: string
+	register?: boolean
 }
 
 /**
- * starts or warps depending on arguments and settings specified for the
- * extension
- *
- * if strategy is `Update Window`, no new window is opened and the current one
- * is updated instead.
+ * opens a new ren'py window. warping an open one is
+ * {@link warp_game}'s job, and choosing between the two is
+ * `start_renpy`'s
  *
  * @returns
- * resolves with the process if a new instance was opened, otherwise undefined
+ * resolves with the process, or undefined where a prompt was cancelled
  */
 export async function launch_renpy({
 	intent,
@@ -62,199 +116,144 @@ export async function launch_renpy({
 	line,
 	context,
 	pm,
-	status_bar,
 	wss,
 	extra_environment,
 	command,
-	project_root: given_project_root
+	project_root: given_project_root,
+	sdk_path: given_sdk_path,
+	debug_session_id,
+	register = true
 }: LaunchRenpyOptions): Promise<ManagedProcess | undefined> {
 	logger.info("launch_renpy:", { file, line })
 
 	const strategy = get_config("strategy")
 	let extensions_enabled = get_config("renpyExtensionsEnabled")
 
-	if (
-		!command &&
-		file &&
-		pm.length &&
-		line !== undefined &&
-		Number.isInteger(line) &&
-		strategy === "Update Window" &&
-		extensions_enabled === "Enabled"
-	) {
-		logger.info("warping in existing window")
+	const nonce = Math.trunc(Math.random() * Number.MAX_SAFE_INTEGER)
 
-		const project_root = given_project_root ?? find_project_root(file)
-		logger.debug("game root:", project_root)
+	const project_root =
+		given_project_root ??
+		(file
+			? find_project_root(file)
+			: await prompt_projects_in_workspaces(context))
 
-		if (!project_root) return
+	if (!project_root) return undefined
 
+	const sdk_path =
+		given_sdk_path ?? (await get_sdk_path(context, true, project_root))
+	if (!sdk_path) return undefined
+
+	const executable = await get_executable(sdk_path, true, project_root)
+	if (!executable) return undefined
+
+	if (extensions_enabled === "Not set") {
+		const success = await prompt_configure_extensions(executable)
+		if (success === false) return undefined
+
+		extensions_enabled = get_config("renpyExtensionsEnabled")
+	}
+
+	if (extensions_enabled === "Enabled") {
+		const has_current = await has_current_rpe({
+			executable,
+			sdk_path,
+			context,
+			project_root
+		})
+
+		if (!has_current) {
+			const installed_path = await prompt_install_rpe({
+				project: project_root,
+				executable,
+				context
+			})
+
+			if (!installed_path) return undefined
+		}
+
+		await wss.start()
+	}
+
+	if (strategy === "Replace Window") pm.at(-1)?.kill()
+
+	let cmds = [...executable, project_root]
+
+	if (command) {
+		cmds.push(...command)
+	}
+
+	if (file && line !== undefined) {
 		const filename_relative = path.relative(
 			path.join(project_root, "game/"),
 			file
 		)
-
-		const rpp = pm.at(-1) as AnyProcess
-
-		await rpp.warp_to_line(filename_relative, line + 1)
-
-		status_bar.notify(
-			`$(debug-line-by-line) Warped to ${filename_relative}:${line + 1}`
-		)
-
-		return
-	} else {
-		logger.info("opening new ren'py window")
-
-		const nonce = Math.trunc(Math.random() * Number.MAX_SAFE_INTEGER)
-		status_bar.set_process(nonce, "starting")
-
-		const project_root =
-			given_project_root ??
-			(file
-				? find_project_root(file)
-				: await prompt_projects_in_workspaces(context))
-
-		if (!project_root) {
-			status_bar.delete_process(nonce)
-			return
-		}
-
-		try {
-			const sdk_path = await get_sdk_path(context, true, project_root)
-			if (!sdk_path) {
-				status_bar.delete_process(nonce)
-				return undefined
-			}
-
-			const executable = await get_executable(sdk_path, true, project_root)
-			if (!executable) {
-				status_bar.delete_process(nonce)
-				return undefined
-			}
-			if (extensions_enabled === "Not set") {
-				const success = await prompt_configure_extensions(executable)
-				if (success === false) {
-					status_bar.delete_process(nonce)
-					return undefined
-				}
-				extensions_enabled = get_config("renpyExtensionsEnabled")
-			}
-
-			if (extensions_enabled === "Enabled") {
-				const has_current = await has_current_rpe({
-					executable,
-					sdk_path,
-					context,
-					project_root
-				})
-
-				if (!has_current) {
-					const installed_path = await prompt_install_rpe({
-						project: project_root,
-						executable,
-						context
-					})
-
-					if (!installed_path) {
-						status_bar.delete_process(nonce)
-						return undefined
-					}
-				}
-
-				await wss.start()
-			}
-
-			if (strategy === "Replace Window") pm.at(-1)?.kill()
-
-			let cmds = [...executable, project_root]
-
-			if (command) {
-				cmds.push(...command)
-			}
-
-			if (file && line !== undefined) {
-				const filename_relative = path.relative(
-					path.join(project_root, "game/"),
-					file
-				)
-				cmds = [...cmds, "--warp", `${filename_relative}:${line + 1}`]
-			}
-
-			const process_env: Record<string, string | undefined> = {
-				RENPY_SCREENSHOT_PATTERN: path.join(project_root, "screenshot%04d.png"),
-				RENPY_VSCODE: await get_editor_cli_path(),
-				...process.env,
-				...(get_config("processEnvironment") as object),
-				...extra_environment,
-				WARP_WS_NONCE: nonce.toString(),
-				// see: https://www.renpy.org/doc/html/editor.html
-				RENPY_EDIT_PY: await get_editor_path(sdk_path)
-			}
-
-			return await vscode.window.withProgress(
-				{
-					title: intent ?? "Starting Ren'Py...",
-					location: vscode.ProgressLocation.Notification,
-					cancellable: true
-				},
-				async (_, cancel) => {
-					logger.info(
-						"spawning process:",
-						// Object.entries(process_env)
-						// 	.map(([k, v]) => `${k}="${v}"`)
-						// 	.join(' '),
-						cmds.map((k) => `"${k}"`).join(" ")
-					)
-
-					const { log_file, file_handle } = await get_log_file(
-						`process-${nonce}.log`
-					)
-
-					const process = child_process.spawn(cmds[0], cmds.slice(1), {
-						env: process_env,
-						detached: true,
-						stdio: ["ignore", file_handle.fd, file_handle.fd]
-					})
-					process.on("error", (e) => {
-						logger.error("process error:", e)
-					})
-
-					// close the file handle for parent process, since the child has a copy
-					file_handle.close()
-
-					if (!process.pid) {
-						throw new Error("failed to start process")
-					}
-
-					logger.info("successfully spawned process", process.pid)
-
-					const rpp = new ManagedProcess({
-						process,
-						project_root,
-						log_file
-					})
-					rpp.on("exit", () => {
-						status_bar.delete_process(nonce)
-						file_handle.close()
-					})
-
-					cancel.onCancellationRequested(() => {
-						rpp.kill()
-					})
-					if (command) return rpp
-
-					pm.add(nonce, rpp)
-					status_bar.set_process(nonce, "idle")
-
-					return rpp
-				}
-			)
-		} catch (error) {
-			status_bar.delete_process(nonce)
-			throw error
-		}
+		cmds = [...cmds, "--warp", `${filename_relative}:${line + 1}`]
 	}
+
+	const process_env: Record<string, string | undefined> = {
+		RENPY_SCREENSHOT_PATTERN: path.join(project_root, "screenshot%04d.png"),
+		RENPY_VSCODE: await get_editor_cli_path(),
+		...process.env,
+		...(get_config("processEnvironment") as object),
+		...extra_environment,
+		WARP_WS_NONCE: nonce.toString(),
+		// see: https://www.renpy.org/doc/html/editor.html
+		RENPY_EDIT_PY: await get_editor_path(sdk_path)
+	}
+
+	return await vscode.window.withProgress(
+		{
+			title: intent ?? "Starting Ren'Py...",
+			location: vscode.ProgressLocation.Notification,
+			cancellable: true
+		},
+		async (_, cancel) => {
+			logger.info("spawning process:", cmds.map((k) => `"${k}"`).join(" "))
+
+			const { log_file, file_handle } = await get_log_file(
+				`process-${nonce}.log`
+			)
+
+			const process = child_process.spawn(cmds[0], cmds.slice(1), {
+				env: process_env,
+				detached: true,
+				stdio: ["ignore", file_handle.fd, file_handle.fd]
+			})
+			process.on("error", (e) => {
+				logger.error("process error:", e)
+			})
+
+			// close the file handle for parent process, since the child has a copy
+			file_handle.close()
+
+			if (!process.pid) {
+				throw new Error("failed to start process")
+			}
+
+			logger.info("successfully spawned process", process.pid)
+
+			const rpp = new ManagedProcess({
+				process,
+				project_root,
+				log_file
+			})
+			rpp.on("exit", () => {
+				file_handle.close()
+			})
+
+			cancel.onCancellationRequested(() => {
+				rpp.kill()
+			})
+
+			if (!register) return rpp
+
+			rpp.debug_session_id = debug_session_id
+
+			pm.add(nonce, rpp)
+
+			return rpp
+		}
+	)
 }
 
 async function register_workspace_projects_with_launcher(
@@ -325,11 +324,6 @@ export async function launch_sdk({
 				// close the file handle for parent process, since the child has a copy
 				file_handle.close()
 
-				const output_channel = vscode.window.createOutputChannel(
-					`Ren'Py Launch and Sync - Launcher Output (${pp.pid})`
-				)
-
-				output_channel.appendLine(`process ${pp.pid} started`)
 				logger.info(`logging process ${pp.pid} to ${log_file}`)
 
 				const tail = new TailFile(log_file, {
@@ -337,14 +331,15 @@ export async function launch_sdk({
 				})
 				tail.start()
 
+				// the launcher is never a tracked process, so it has no debug
+				// console of its own to write to
 				tail.pipe(split2()).on("data", (line: string) => {
-					output_channel.appendLine(line)
+					logger.debug(`launcher ${pp.pid} >`, line)
 				})
 
 				pp.on("close", async (code) => {
 					logger.info(`launcher process ${pp.pid} exited with code ${code}`)
 					await tail.quit()
-					output_channel?.appendLine(`process exited with code ${code}`)
 				})
 
 				if (!pp.pid) {

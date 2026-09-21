@@ -16,12 +16,14 @@ import { update_existing_rpes } from "./lib/rpe"
 import { register_handlers } from "./lib/handlers"
 import { DecorationService } from "./lib/decoration"
 import { AnyProcess } from "./lib/process"
+import type { RenpyDebugConfigurationProvider } from "./lib/debug"
 import {
 	download_sdk,
 	list_downloaded_sdks,
 	uninstall_sdk
 } from "./lib/download"
 import { launch_renpy } from "./lib/launch"
+import { register_debugger } from "./lib/debug"
 
 const logger = get_logger()
 
@@ -43,6 +45,7 @@ export interface ExtensionApi {
 	 * the e2e tests
 	 */
 	launch_unmanaged: () => Promise<AnyProcess | undefined>
+	debug_provider: RenpyDebugConfigurationProvider
 }
 
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
@@ -74,13 +77,18 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 
 	context.subscriptions.push(pm, follow_cursor, status_bar, ds)
 
-	let pm_init = false
-	pm.on("exit", () => {
+	function sync_process_count() {
 		vscode.commands.executeCommand(
 			"setContext",
 			"renpyWarp.runningProcesses",
 			pm.length
 		)
+		status_bar.update(() => ({ running_processes: pm.length }))
+	}
+
+	let pm_init = false
+	pm.on("exit", () => {
+		sync_process_count()
 
 		if (pm.length === 0) {
 			pm_init = false
@@ -100,11 +108,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		}
 	})
 	pm.on("attach", async (rpp: AnyProcess) => {
-		vscode.commands.executeCommand(
-			"setContext",
-			"renpyWarp.runningProcesses",
-			pm.length
-		)
+		sync_process_count()
 
 		ds.track(rpp)
 
@@ -126,6 +130,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 	})
 
 	register_commands(context, pm, status_bar, follow_cursor, wss)
+	const debug_provider = register_debugger(context, pm, status_bar, wss)
 	register_handlers(context, pm, wss)
 
 	if (get_config("renpyExtensionsEnabled") === "Enabled") {
@@ -160,8 +165,9 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 			uninstall: (sdk_path) => uninstall_sdk(sdk_path, context)
 		},
 		launch_unmanaged() {
-			return launch_renpy({ context, pm, status_bar, wss, command: [] })
-		}
+			return launch_renpy({ context, pm, wss, register: false })
+		},
+		debug_provider
 	}
 }
 

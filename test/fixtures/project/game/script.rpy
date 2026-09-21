@@ -11,3 +11,18 @@ label start:
     "This is the fourth line."
 
     return
+
+label pauses:
+
+    "First segment.{w}Second segment.{w}Third segment."
+
+    "After the pauses."
+
+    return
+
+# stands in for a menu or screen
+label _simulate_menu:
+
+    pause
+
+    jump _return

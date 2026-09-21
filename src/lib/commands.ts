@@ -1,6 +1,7 @@
 import * as vscode from "vscode"
 import { get_config, show_file } from "./config"
 import { launch_renpy, launch_sdk } from "./launch"
+import { start_renpy } from "./debug"
 import { prompt_configure_extensions } from "./onboard"
 import {
 	find_projects_in_workspaces,
@@ -14,7 +15,7 @@ import { ProcessManager } from "./process"
 import { StatusBar } from "./status_bar"
 import { FollowCursorService, sync_editor_with_renpy } from "./follow_cursor"
 import { get_logger } from "./log"
-import { is_special_label } from "./label"
+import { is_system_label } from "./label"
 import {
 	get_statements,
 	next_resting_statement,
@@ -39,7 +40,7 @@ export function get_commands(
 	> = {
 		"renpyWarp.launch": async () => {
 			try {
-				await launch_renpy({ context, pm, status_bar, wss })
+				await start_renpy({ pm, status_bar })
 			} catch (error: unknown) {
 				logger.error(error as Error)
 			}
@@ -60,14 +61,12 @@ export function get_commands(
 			}
 
 			try {
-				await launch_renpy({
+				await start_renpy({
 					intent: "Starting Ren'Py at line...",
 					file: editor.document.uri.fsPath,
 					line: target.warp_line,
-					context,
 					pm,
-					status_bar,
-					wss
+					status_bar
 				})
 			} catch (error: unknown) {
 				logger.error(error as Error)
@@ -95,14 +94,12 @@ export function get_commands(
 			}
 
 			try {
-				await launch_renpy({
+				await start_renpy({
 					intent: "Starting Ren'Py at file...",
 					file: document.uri.fsPath,
 					line: target.warp_line,
-					context,
 					pm,
-					status_bar,
-					wss
+					status_bar
 				})
 			} catch (error: unknown) {
 				logger.error(error as Error)
@@ -122,14 +119,10 @@ export function get_commands(
 			const new_process = process === undefined
 
 			if (process === undefined) {
-				process = await launch_renpy({
+				process = await start_renpy({
 					pm,
 					status_bar,
-					wss,
-					context,
-					extra_environment: {
-						RENPY_SKIP_SPLASHSCREEN: "1"
-					}
+					env: { RENPY_SKIP_SPLASHSCREEN: "1" }
 				})
 				if (process === undefined) return
 			}
@@ -275,7 +268,7 @@ export function get_commands(
 
 					if (process.labels !== undefined) {
 						filtered_labels = process.labels
-							.filter((label) => !is_special_label(label))
+							.filter((label) => !is_system_label(label))
 							.sort()
 
 						quick_pick.items = build_items(filtered_labels)
@@ -424,6 +417,8 @@ export function get_commands(
 		},
 
 		"renpyWarp.lint": async () => {
+			let p: Awaited<ReturnType<typeof launch_renpy>>
+
 			try {
 				const project_root = await prompt_projects_in_workspaces(context)
 				if (!project_root) return
@@ -441,13 +436,13 @@ export function get_commands(
 				)
 				await fs.mkdir(path.dirname(lint_txt), { recursive: true })
 
-				const p = await launch_renpy({
+				p = await launch_renpy({
 					intent: "Linting project...",
 					command: ["lint", lint_txt],
+					register: false,
 					project_root,
 					context,
 					pm,
-					status_bar,
 					wss
 				})
 				if (!p) return
@@ -463,21 +458,23 @@ export function get_commands(
 						"Open Output"
 					)
 					.then((selection) => {
-						if (selection === "Open Output") {
-							logger.show()
-						}
+						if (selection !== "Open Output") return
+						if (p) show_file(p.log_file)
+						else logger.show()
 					})
 			}
 		},
 
 		"renpyWarp.rmpersistent": async () => {
+			let p: Awaited<ReturnType<typeof launch_renpy>>
+
 			try {
-				await launch_renpy({
+				p = await launch_renpy({
 					intent: "Removing persistent data...",
 					command: ["rmpersistent"],
+					register: false,
 					context,
 					pm,
-					status_bar,
 					wss
 				})
 				vscode.window.showInformationMessage(
@@ -493,20 +490,22 @@ export function get_commands(
 						"Open Output"
 					)
 					.then((selection) => {
-						if (selection === "Open Output") {
-							logger.show()
-						}
+						if (selection !== "Open Output") return
+						if (p) show_file(p.log_file)
+						else logger.show()
 					})
 			}
 		},
 		"renpyWarp.forceRecompile": async () => {
+			let p: Awaited<ReturnType<typeof launch_renpy>>
+
 			try {
-				await launch_renpy({
+				p = await launch_renpy({
 					intent: "Force recompiling project...",
 					command: ["compile"],
+					register: false,
 					context,
 					pm,
-					status_bar,
 					wss
 				})
 			} catch (error: unknown) {
@@ -518,9 +517,9 @@ export function get_commands(
 						"Open Output"
 					)
 					.then((selection) => {
-						if (selection === "Open Output") {
-							logger.show()
-						}
+						if (selection !== "Open Output") return
+						if (p) show_file(p.log_file)
+						else logger.show()
 					})
 			}
 		},

@@ -10,7 +10,7 @@ export const RENPY_SPECIAL_LABELS = [
 	"hide_windows"
 ]
 
-export function is_special_label(label: string) {
+export function is_system_label(label: string) {
 	return (
 		label.startsWith("_") ||
 		label.endsWith("_screen") ||

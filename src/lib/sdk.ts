@@ -12,7 +12,6 @@ import tildify from "tildify"
 import { parse as semver_parse } from "semver"
 import { get_logger } from "./log"
 import {
-	get_downloaded_sdk,
 	get_or_download_sdk_path,
 	list_downloaded_sdks,
 	uninstall_sdk
@@ -210,6 +209,34 @@ function highest_patch_per_minor(sdks: RemoteSdk[]): RemoteSdk[] {
 
 export async function path_is_sdk(sdk_path: string): Promise<boolean> {
 	return await path_exists(path.join(sdk_path, "renpy.py"))
+}
+
+/**
+ * turns a `launch.json` `sdk` attribute into a path.
+ *
+ * @returns
+ * the sdk path, or undefined where the reference was bad or a prompt was
+ * cancelled.
+ */
+export async function resolve_sdk_reference(
+	reference: string,
+	context: vscode.ExtensionContext
+): Promise<string | undefined> {
+	const trimmed = reference.trim()
+
+	if (!reference) return undefined
+
+	const sdk_path = await resolve_version_file_value(trimmed, context, true)
+
+	if (sdk_path && !(await path_is_sdk(sdk_path))) {
+		vscode.window.showErrorMessage(
+			`'sdk' points at ${tildify(sdk_path)}, which is not a Ren'Py SDK`,
+			"OK"
+		)
+		return undefined
+	}
+
+	return sdk_path
 }
 
 async function find_version_file(
@@ -540,12 +567,6 @@ export async function prompt_sdk_quick_pick(
 			case "Delete": {
 				if (!e.item.path) throw new Error("item path is undefined")
 				await uninstall_sdk(e.item.path, context)
-				if (e.item.path === current_sdk_path) {
-					const { version_file } = await find_version_file(project_root)
-					if (version_file) {
-						await fs.rm(version_file, { force: true })
-					}
-				}
 				downloaded_sdks = await list_downloaded_sdks(context)
 				render()
 				break

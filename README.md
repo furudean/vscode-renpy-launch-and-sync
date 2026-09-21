@@ -5,8 +5,8 @@ Studio Code.
 
 ## Features
 
-- Start and quit your Ren'Py game directly from Visual Studio Code
-- Warp games to a specific line, or jump to a label
+- Start and quit your Ren'Py game directly through _Run and Debug_
+- Step forward and back through game dialogue, warp to a specific line, or jump to label without leaving VSCode
 - Move cursor position in Visual Studio Code as dialogue progresses with the
   _Follow Cursor_ mode
 - A gutter decoration to remind you where you are in the game, even when the
