@@ -93,8 +93,10 @@ writeFileSync(
 		"renpyWarp.followCursorBehavior": "Just reveal",
 		"renpyWarp.followCursorOnLaunch": false,
 		"renpyWarp.setAutoReloadOnSave": false,
-		// ren'py skips audio init with this set, so the game runs silent
-		"renpyWarp.processEnvironment": { RENPY_DISABLE_SOUND: "1" }
+		"renpyWarp.processEnvironment": {
+			RENPY_DISABLE_SOUND: "1", // be quiet
+			SDL_MAC_BACKGROUND_APP: "1" // dont steal focus
+		}
 	})
 )
 
