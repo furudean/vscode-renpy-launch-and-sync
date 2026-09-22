@@ -210,6 +210,28 @@ describe("what counts as warpable", () => {
 		])
 	})
 
+	test("swallows an image or transform's own ATL block", () => {
+		const script = [
+			`image eileen happy:`,
+			`    "eileen_happy.png"`,
+			`    zoom 1.0`,
+			`transform bounce:`,
+			`    block:`,
+			`        yoffset 0`,
+			`        pause 1.0`,
+			`    repeat`,
+			`label start:`,
+			`    e "hi"`
+		].join("\n")
+
+		assert.deepEqual(statements(script), [
+			"0 image (no warp)",
+			"3 transform (no warp)",
+			"8 label",
+			"9 say"
+		])
+	})
+
 	test("reads nothing out of a python block", () => {
 		const script = [
 			`label start:`,
@@ -220,6 +242,19 @@ describe("what counts as warpable", () => {
 		].join("\n")
 
 		assert.deepEqual(statements(script), ["0 label", "1 python", "4 say"])
+	})
+
+	test("takes python in a namespace the same as any other python block", () => {
+		const script = [
+			`label start:`,
+			`    python in mystore:`,
+			`        x = 1`,
+			`    e "after"`
+		].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 python", "3 say"])
+		assert.equal(warp(script, 1), undefined, "python runs straight through")
+		assert.equal(warp(script, 3), "3 say")
 	})
 
 	test("refuses init blocks and what they hold", () => {
@@ -242,6 +277,45 @@ describe("what counts as warpable", () => {
 			"5 init offset (no warp)",
 			"6 python early (no warp)"
 		])
+	})
+
+	test("takes init python's priority as still python, not script", () => {
+		// a priority shifts "python" from the second leading word to the
+		// third, e.g. `init 5 python:` — its body must stay opaque either way
+		const script = [
+			`init 5 python:`,
+			`    x = 1`,
+			`init -10 python:`,
+			`    y = 2`,
+			`init python hide:`,
+			`    z = 3`
+		].join("\n")
+
+		assert.deepEqual(statements(script), [
+			"0 init python (no warp)",
+			"2 init python (no warp)",
+			"4 init python (no warp)"
+		])
+	})
+
+	test("doesn't let init python's priority leak a phantom label", () => {
+		const script = [
+			`init 5 python:`,
+			`    label = "chapter1"`,
+			`label start:`,
+			`    e "hi"`
+		].join("\n")
+
+		assert.deepEqual(statements(script), [
+			"0 init python (no warp)",
+			"2 label",
+			"3 say"
+		])
+		assert.equal(
+			warp(script, 1),
+			undefined,
+			"the python line isn't a real label"
+		)
 	})
 
 	test("takes a label declared inside an init block", () => {
@@ -284,6 +358,17 @@ describe("what counts as warpable", () => {
 			"2 translate (no warp)",
 			"5 label",
 			"6 say"
+		])
+	})
+
+	test("refuses a translation whose identifier isn't python, style or strings", () => {
+		// any other identifier still names a translated label, which is
+		// script rather than python, style pairs or string pairs
+		const script = [`translate french chapter1:`, `    e "Bonjour!"`].join("\n")
+
+		assert.deepEqual(statements(script), [
+			"0 translate (no warp)",
+			"1 say (no warp)"
 		])
 	})
 
@@ -333,29 +418,36 @@ describe("what counts as warpable", () => {
 		])
 	})
 
-	test("takes narration opening with a statement's name as narration", () => {
-		// the words of a bare string are text, not a keyword, so the game rests
-		// on every one of these
+	test("takes a menu nested inside a choice's block", () => {
 		const script = [
 			`label start:`,
-			`    "play the game, they said."`,
-			`    "return to the castle."`,
-			`    "with a whimper, it ended."`,
-			`    "Ordinary narration."`
+			`    menu:`,
+			`        "Outer":`,
+			`            menu:`,
+			`                "Inner":`,
+			`                    e "chosen"`
 		].join("\n")
 
 		assert.deepEqual(statements(script), [
 			"0 label",
-			"1 say",
-			"2 say",
-			"3 say",
-			"4 say"
+			"1 menu",
+			"3 menu",
+			"5 say"
 		])
+		assert.equal(warp(script, 1), "1 menu", "the outer menu")
+		assert.equal(warp(script, 3), "3 menu", "the inner menu")
+		assert.equal(warp(script, 5), "5 say")
+	})
 
+	test("takes narration opening with a statement's name as narration", () => {
+		// the words of a bare string are text, not a keyword, even one that
+		// names a real flow statement like `play`
+		const script = [`label start:`, `    "play the game, they said."`].join(
+			"\n"
+		)
+
+		assert.deepEqual(statements(script), ["0 label", "1 say"])
 		assert.equal(warp(script, 1), "1 say")
-		assert.equal(warp(script, 2), "2 say")
-		assert.equal(warp(script, 3), "3 say")
-		assert.equal(warp(script, 4), "4 say")
 	})
 
 	test("takes a creator-defined statement, but not the block it holds", () => {
@@ -369,6 +461,125 @@ describe("what counts as warpable", () => {
 		].join("\n")
 
 		assert.deepEqual(statements(script), ["0 label", "1 example", "3 say"])
+	})
+})
+
+describe("label, jump, call and return forms", () => {
+	// @see https://www.renpy.org/doc/html/label.html
+	test("takes a label's parameters as part of its declaration", () => {
+		const script = [`label sample(a="default"):`, `    "a = [a]"`].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 say"])
+		assert.equal(warp(script, 0), undefined, "the label runs into its body")
+		assert.equal(warp(script, 1), "1 say")
+	})
+
+	test("takes a say's explicit id clause as part of the statement", () => {
+		const script = [
+			`label start:`,
+			`    e "This used to have a typo." id start_61b861a2`
+		].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 say"])
+		assert.equal(warp(script, 1), "1 say")
+	})
+
+	test("takes a local label the same as any other", () => {
+		const script = [
+			`label global_label:`,
+			`    "Under a global label.."`,
+			`label .local_label:`,
+			`    "..resides a local one."`
+		].join("\n")
+
+		assert.deepEqual(statements(script), [
+			"0 label",
+			"1 say",
+			"2 label",
+			"3 say"
+		])
+		assert.equal(warp(script, 1), "1 say")
+		assert.equal(warp(script, 3), "3 say")
+	})
+
+	test("takes jump in its expression form", () => {
+		const script = [
+			`label start:`,
+			`    jump expression "loop_" + "start"`
+		].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 jump"])
+		assert.equal(warp(script, 1), undefined, "jump leaves for another label")
+	})
+
+	test("takes call with an argument list", () => {
+		const script = [`label start:`, `    call subroutine(2)`].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 call"])
+		assert.equal(warp(script, 1), undefined, "call leaves for the called label")
+	})
+
+	test("takes return with a value", () => {
+		const script = [`label start:`, `    return 5`].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 return"])
+		assert.equal(warp(script, 1), undefined, "return leaves the label")
+	})
+})
+
+describe("scene, show, hide and with", () => {
+	test("takes hide, which leaves what runs after it on screen", () => {
+		const script = [`label start:`, `    hide eileen`].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 hide"])
+		assert.equal(warp(script, 1), undefined)
+	})
+
+	test("takes show with every clause on one line, no ATL block", () => {
+		const script = [
+			`label start:`,
+			`    show eileen happy at Transform(xalign=0.5) onlayer master zorder 1`,
+			`    e "hi"`
+		].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 show", "2 say"])
+		assert.equal(warp(script, 1), undefined, "show runs straight through")
+		assert.equal(warp(script, 2), "2 say")
+	})
+
+	test("takes a transition on the same line as the statement it clauses", () => {
+		const script = [`label start:`, `    scene bg room with dissolve`].join(
+			"\n"
+		)
+
+		assert.deepEqual(statements(script), ["0 label", "1 scene"])
+		assert.equal(warp(script, 1), undefined, "scene runs straight through")
+	})
+
+	test("takes a bare with as a statement of its own", () => {
+		const script = [
+			`label start:`,
+			`    scene bg room`,
+			`    with dissolve`
+		].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 scene", "2 with"])
+		assert.equal(warp(script, 2), undefined, "with runs straight through")
+	})
+
+	test("misreads dialogue from a character named after a flow keyword", () => {
+		// `name_of` checks the flow keywords before it ever tries the SAY
+		// pattern, so a character object literally named `jump`, `show`,
+		// `scene` and so on shadows the keyword — a real, if rare, false
+		// positive worth pinning down rather than leaving to guesswork
+		const script = [`label start:`, `    jump "Hello!"`].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 jump"])
+		assert.equal(
+			warp(script, 1),
+			undefined,
+			"dialogue should stop here, but the misread jump never does"
+		)
 	})
 })
 
