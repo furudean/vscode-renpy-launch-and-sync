@@ -124,6 +124,15 @@ async function write_version_file(value: string): Promise<void> {
 	await fs.writeFile(path.join(project_root, ".renpy-version"), value + "\n")
 }
 
+async function launch_game(): Promise<boolean> {
+	return vscode.debug.startDebugging(vscode.workspace.workspaceFolders![0], {
+		type: "renpyWarp",
+		request: "launch",
+		name: "Launch Ren'Py project",
+		project: project_root
+	})
+}
+
 suite("renpyWarp", function () {
 	this.timeout(30_000)
 
@@ -173,7 +182,7 @@ suite("renpyWarp", function () {
 	test("registers commands", async () => {
 		const commands = await vscode.commands.getCommands(true)
 
-		assert.ok(commands.includes("renpyWarp.launch"))
+		assert.ok(commands.includes("renpyWarp.warpToLine"))
 	})
 
 	test("lints the project and opens the report", async () => {
@@ -200,7 +209,7 @@ suite("renpyWarp", function () {
 	})
 
 	test("launches the game and kills it", async () => {
-		await vscode.commands.executeCommand("renpyWarp.launch")
+		await launch_game()
 
 		assert.strictEqual(api.pm.length, 1)
 		const process = api.pm.at(0) as ManagedProcess
@@ -311,7 +320,7 @@ suite("renpyWarp", function () {
 		// once its rpe has connected
 		async function running(): Promise<AnyProcess> {
 			if (api.pm.length === 0) {
-				await vscode.commands.executeCommand("renpyWarp.launch")
+				await launch_game()
 			}
 
 			const process = api.pm.at(-1)
@@ -576,32 +585,6 @@ suite("renpyWarp", function () {
 			await wait_for(() => api.pm.length === 0, "the process to be forgotten")
 		})
 
-		test("starts a command launch inside a session of its own", async () => {
-			assert.strictEqual(renpy_sessions().length, 0)
-
-			await vscode.commands.executeCommand("renpyWarp.launch")
-
-			const process = api.pm.at(-1)
-			assert.ok(process, "game did not launch")
-
-			// the command goes through the debugger itself, so the process is
-			// born inside a launch session rather than being adopted into one
-			assert.strictEqual(renpy_sessions().length, 1)
-			assert.strictEqual(
-				renpy_sessions()[0].configuration.request,
-				"launch",
-				"process was adopted rather than launched"
-			)
-
-			await vscode.commands.executeCommand("renpyWarp.killAll")
-
-			await wait_for(() => api.pm.length === 0, "the game to die")
-			await wait_for(
-				() => renpy_sessions().length === 0,
-				"the session to terminate"
-			)
-		})
-
 		test("warps the open game rather than starting a second one", async () => {
 			await update_config({
 				renpyExtensionsEnabled: "Enabled",
@@ -609,7 +592,7 @@ suite("renpyWarp", function () {
 			})
 
 			try {
-				await vscode.commands.executeCommand("renpyWarp.launch")
+				await launch_game()
 
 				const process = api.pm.at(-1)
 				assert.ok(process, "game did not launch")
@@ -663,7 +646,7 @@ suite("renpyWarp", function () {
 			)
 
 			try {
-				await vscode.commands.executeCommand("renpyWarp.launch")
+				await launch_game()
 
 				const process = api.pm.at(-1)
 				assert.ok(process, "game did not launch")

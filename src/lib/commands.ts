@@ -38,14 +38,6 @@ export function get_commands(
 		string,
 		(...args: unknown[]) => Promise<unknown> | unknown
 	> = {
-		"renpyWarp.launch": async () => {
-			try {
-				await start_renpy({ pm, status_bar })
-			} catch (error: unknown) {
-				logger.error(error as Error)
-			}
-		},
-
 		"renpyWarp.warpToLine": async () => {
 			const editor = vscode.window.activeTextEditor
 			if (!editor) return

@@ -211,12 +211,6 @@
 		},
 		"commands": [
 			{
-				"command": "renpyWarp.launch",
-				"title": "Launch Ren'Py project",
-				"category": "Ren'Py Launch",
-				"icon": "$(play)"
-			},
-			{
 				"command": "renpyWarp.warpToLine",
 				"title": "Open Ren'Py to line",
 				"category": "Ren'Py Launch",
@@ -350,11 +344,6 @@
 			]
 		},
 		"keybindings": [
-			{
-				"command": "renpyWarp.launch",
-				"key": "alt+shift+l",
-				"mac": "cmd+shift+l"
-			},
 			{
 				"command": "renpyWarp.warpToLine",
 				"key": "alt+shift+e",
