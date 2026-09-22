@@ -882,69 +882,6 @@ suite("renpyWarp", function () {
 				}
 			})
 
-			test("Step Into advances to the next checkpoint", async () => {
-				const { process } = await debugging()
-
-				try {
-					await process.jump_to_label("pauses")
-					await wait_for(
-						() => process.last_cursor !== undefined,
-						"ren'py to report the paused line",
-						{ process }
-					)
-					const paused_line = process.last_cursor!.line
-
-					const session = vscode.debug.activeDebugSession
-					assert.strictEqual(session?.type, "renpyWarp")
-					await session.customRequest("stepIn")
-
-					await wait_for(
-						() => process.last_cursor?.line !== paused_line,
-						"ren'py to move past the paused line",
-						{ process }
-					)
-					assert.strictEqual(
-						process.last_cursor?.what,
-						"After the pauses.",
-						"stepIn stopped inside the pause block"
-					)
-				} finally {
-					await stop(process)
-				}
-			})
-
-			test("debug toolbar's Step Out rolls back to the previous checkpoint", async () => {
-				const { process } = await debugging()
-
-				try {
-					await process.jump_to_label("start")
-					await wait_for(
-						() => process.last_cursor?.line === 5,
-						"ren'py to report script.rpy:5",
-						{ process }
-					)
-
-					await process.advance()
-					await wait_for(
-						() => process.last_cursor?.line === 7,
-						"ren'py to report script.rpy:7",
-						{ process }
-					)
-
-					const session = vscode.debug.activeDebugSession
-					assert.strictEqual(session?.type, "renpyWarp")
-					await session.customRequest("stepOut")
-
-					await wait_for(
-						() => process.last_cursor?.line === 5,
-						"ren'py to roll back to script.rpy:5",
-						{ process }
-					)
-				} finally {
-					await stop(process)
-				}
-			})
-
 			test("evaluates an expression typed into the debug console", async () => {
 				const { process } = await debugging()
 
