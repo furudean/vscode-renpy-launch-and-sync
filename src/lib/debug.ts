@@ -118,11 +118,12 @@ export class RenpyDebugConfigurationProvider
 		config: RenpyDebugConfiguration
 	): Promise<RenpyDebugConfiguration | undefined> {
 		return config.request === "attach"
-			? this.resolve_attach(config)
+			? this.resolve_attach(folder, config)
 			: this.resolve_launch(folder, config)
 	}
 
 	private resolve_attach(
+		folder: vscode.WorkspaceFolder | undefined,
 		config: RenpyDebugConfiguration
 	): RenpyDebugConfiguration | undefined {
 		const rpp =
@@ -131,9 +132,10 @@ export class RenpyDebugConfigurationProvider
 				: undefined
 
 		if (!rpp) {
-			vscode.window.showErrorMessage(
-				`No tracked Ren'Py process with pid ${config.pid}`,
-				"OK"
+			show_invalid_config_error(
+				folder,
+				config.name,
+				`No tracked Ren'Py process with pid ${config.pid}`
 			)
 			return undefined
 		}
@@ -159,9 +161,10 @@ export class RenpyDebugConfigurationProvider
 			line = Number(config.line)
 
 			if (!Number.isInteger(line)) {
-				vscode.window.showErrorMessage(
-					`'line' must be a whole number, but was '${config.line}'`,
-					"OK"
+				show_invalid_config_error(
+					folder,
+					config.name,
+					`'line' must be a whole number, but was '${config.line}'`
 				)
 				return undefined
 			}
@@ -175,9 +178,10 @@ export class RenpyDebugConfigurationProvider
 		}
 
 		if (project && !(await path_exists(path.join(project, "game")))) {
-			vscode.window.showErrorMessage(
-				`${project} is not a Ren'Py project. A project is a directory holding a 'game' directory`,
-				"OK"
+			show_invalid_config_error(
+				folder,
+				config.name,
+				`${project} is not a Ren'Py project. A project is a directory holding a 'game' directory`
 			)
 			return undefined
 		}
@@ -190,9 +194,10 @@ export class RenpyDebugConfigurationProvider
 			project = find_project_root(file) ?? undefined
 
 			if (!project) {
-				vscode.window.showErrorMessage(
-					`${path.basename(file)} is not inside a Ren'Py project. A project is a directory holding a 'game' directory`,
-					"OK"
+				show_invalid_config_error(
+					folder,
+					config.name,
+					`${path.basename(file)} is not inside a Ren'Py project. A project is a directory holding a 'game' directory`
 				)
 				return undefined
 			}
@@ -225,9 +230,10 @@ export class RenpyDebugConfigurationProvider
 				const target = next_resting_statement(statements, 0)
 
 				if (target === undefined) {
-					vscode.window.showErrorMessage(
-						"There is nothing to start at in this file, as it holds no statements Ren'Py can play",
-						"OK"
+					show_invalid_config_error(
+						folder,
+						config.name,
+						"There is nothing to start at in this file, as it holds no statements Ren'Py can play"
 					)
 					return undefined
 				}
@@ -237,7 +243,11 @@ export class RenpyDebugConfigurationProvider
 				const target = warp_target(statements, line - 1)
 
 				if (!target?.warpable) {
-					vscode.window.showErrorMessage(warp_refusal(target, line - 1), "OK")
+					show_invalid_config_error(
+						folder,
+						config.name,
+						warp_refusal(target, line - 1)
+					)
 					return undefined
 				}
 
@@ -247,6 +257,56 @@ export class RenpyDebugConfigurationProvider
 
 		return { ...config, project, file, _sdk_path: sdk_path }
 	}
+}
+
+function show_invalid_config_error(
+	folder: vscode.WorkspaceFolder | undefined,
+	name: string | undefined,
+	message: string
+): void {
+	void vscode.window
+		.showErrorMessage(message, "Edit Configuration", "OK")
+		.then((selection) => {
+			if (selection === "Edit Configuration") {
+				void reveal_launch_config(folder, name)
+			}
+		})
+}
+
+/** opens launch.json and, when it can find the entry, selects it */
+async function reveal_launch_config(
+	folder: vscode.WorkspaceFolder | undefined,
+	name: string | undefined
+): Promise<void> {
+	const workspace_folder = folder ?? vscode.workspace.workspaceFolders?.[0]
+	if (!workspace_folder) return
+
+	const launch_json = vscode.Uri.joinPath(
+		workspace_folder.uri,
+		".vscode",
+		"launch.json"
+	)
+
+	if (!(await path_exists(launch_json.fsPath))) return
+
+	const document = await vscode.workspace.openTextDocument(launch_json)
+	const editor = await vscode.window.showTextDocument(document)
+
+	if (!name) return
+
+	const escaped_name = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+	const match = new RegExp(`"name"\\s*:\\s*"${escaped_name}"`).exec(
+		document.getText()
+	)
+	if (!match) return
+
+	const start = document.positionAt(match.index)
+	const end = document.positionAt(match.index + match[0].length)
+	editor.selection = new vscode.Selection(start, end)
+	editor.revealRange(
+		new vscode.Range(start, end),
+		vscode.TextEditorRevealType.InCenter
+	)
 }
 
 function as_workspace_relative(project: string): string {
