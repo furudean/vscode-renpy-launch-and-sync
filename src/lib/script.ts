@@ -354,7 +354,8 @@ function classify(text: string, context: Context): Classified {
 				}
 			}
 
-			if (second === "python") {
+			// a priority shifts "python" from `second` to `third`, e.g. `init 5 python:`
+			if (second === "python" || third === "python") {
 				return {
 					statement: {
 						keyword: "init python",
