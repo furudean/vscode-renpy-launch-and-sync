@@ -92,11 +92,7 @@ writeFileSync(
 		"renpyWarp.followCursorMode": "Ren'Py updates Visual Studio Code",
 		"renpyWarp.followCursorBehavior": "Just reveal",
 		"renpyWarp.followCursorOnLaunch": false,
-		"renpyWarp.setAutoReloadOnSave": false,
-		"renpyWarp.processEnvironment": {
-			RENPY_DISABLE_SOUND: "1", // be quiet
-			SDL_MAC_BACKGROUND_APP: "1" // dont steal focus
-		}
+		"renpyWarp.setAutoReloadOnSave": false
 	})
 )
 

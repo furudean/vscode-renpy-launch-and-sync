@@ -19,6 +19,8 @@ All notable changes to this project will be documented in this file.
 - Removed the `renpyWarp.launch` command, now redundant with _Run and Debug_
 - Removed the `renpyWarp.warpToFile` command
 - Process logs are no longer stored on system
+- Removed the `renpyWarp.processEnvironment` setting, now redundant with the
+  `env` launch configuration attribute
 
 ## 4.0.0 - 2026-09-15
 

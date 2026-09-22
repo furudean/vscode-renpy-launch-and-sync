@@ -76,6 +76,13 @@ const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms))
 // ren'py reports 1-based lines, the editor works in 0-based ones
 const editor_line = (line: number) => line - 1
 
+const BASE_ENV = {
+	// keep test runs quiet
+	RENPY_DISABLE_SOUND: "1",
+	// don't steal focus (on mac)
+	SDL_MAC_BACKGROUND_APP: "1"
+}
+
 function log_tail(process: AnyProcess | undefined): string {
 	if (!process || !("take_output_backlog" in process)) return ""
 
@@ -129,7 +136,8 @@ async function launch_game(): Promise<boolean> {
 		type: "renpyWarp",
 		request: "launch",
 		name: "Launch Ren'Py project",
-		project: project_root
+		project: project_root,
+		env: BASE_ENV
 	})
 }
 
@@ -570,7 +578,8 @@ suite("renpyWarp", function () {
 				type: "renpyWarp",
 				request: "launch",
 				name: "t",
-				project: project_root
+				project: project_root,
+				env: BASE_ENV
 			})
 			assert.strictEqual(started, true, "debug session did not start")
 
@@ -713,7 +722,8 @@ suite("renpyWarp", function () {
 					request: "launch",
 					name: "t",
 					project: project_root,
-					sdk: sdk_path
+					sdk: sdk_path,
+					env: BASE_ENV
 				})
 
 				assert.strictEqual(started, true, "debug session did not start")
@@ -783,7 +793,8 @@ suite("renpyWarp", function () {
 					type: "renpyWarp",
 					request: "launch",
 					name: "t",
-					project: project_root
+					project: project_root,
+					env: BASE_ENV
 				})
 				assert.strictEqual(started, true, "debug session did not start")
 

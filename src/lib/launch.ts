@@ -193,7 +193,6 @@ export async function launch_renpy({
 		RENPY_SCREENSHOT_PATTERN: path.join(project_root, "screenshot%04d.png"),
 		RENPY_VSCODE: await get_editor_cli_path(),
 		...process.env,
-		...(get_config("processEnvironment") as object),
 		...extra_environment,
 		WARP_WS_NONCE: nonce.toString(),
 		// see: https://www.renpy.org/doc/html/editor.html
@@ -284,7 +283,6 @@ export async function launch_sdk({
 				const process_env: Record<string, string | undefined> = {
 					RENPY_VSCODE: await get_editor_cli_path(),
 					...process.env,
-					...(get_config("processEnvironment") as object),
 					// see: https://www.renpy.org/doc/html/editor.html
 					RENPY_EDIT_PY: await get_editor_path(sdk_path)
 				}

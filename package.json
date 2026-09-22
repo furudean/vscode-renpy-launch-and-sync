@@ -138,7 +138,7 @@
 									"type": "string"
 								},
 								"default": {},
-								"description": "Extra environment variables for the Ren'Py process. Merged after renpyWarp.processEnvironment."
+								"description": "Extra environment variables for the Ren'Py process."
 							},
 							"sdk": {
 								"type": "string",
@@ -478,14 +478,6 @@
 					"type": "string",
 					"default": "launcher/Visual Studio Code (System).edit.py",
 					"markdownDescription": "The `Editor` class to supply to `renpy.sh`. Should be a relative or absolute path to an `.edit.py` file.\n\nThis setting is equivalent to the environment variable [`RENPY_EDIT_PY`](https://www.renpy.org/doc/html/editor.html).\n\nRelative paths are resolved from the SDK path. For example, a valid value would be [`launcher/System Editor.edit.py`](https://github.com/renpy/renpy/blob/master/launcher/System%20Editor.edit.py).\n\n"
-				},
-				"renpyWarp.processEnvironment": {
-					"type": "object",
-					"markdownDescription": "Additional environment variables to pass to the Ren'Py process.",
-					"default": {},
-					"additionalProperties": {
-						"type": "string"
-					}
 				}
 			}
 		}
