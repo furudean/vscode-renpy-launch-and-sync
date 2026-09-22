@@ -2,6 +2,8 @@ import { JSDOM } from "jsdom"
 import { SemVer, parse as semver_parse } from "semver"
 import url_join from "url-join"
 
+const FETCH_TIMEOUT_MS = 15_000
+
 export interface RemoteSdk {
 	name: string
 	url: URL
@@ -11,7 +13,9 @@ export interface RemoteSdk {
 async function fetch_and_parse_nginx_directory(
 	url: string | URL
 ): Promise<URL[]> {
-	const request = await fetch(url)
+	const request = await fetch(url, {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+	})
 	const text = await request.text()
 
 	const { document } = new JSDOM(text).window
@@ -85,7 +89,9 @@ export async function list_remote_sdks(): Promise<RemoteSdk[]> {
 const NIGHTLY_INDEX_URL = "https://nightly.renpy.org/"
 
 export async function list_nightly_sdks(): Promise<RemoteSdk[]> {
-	const request = await fetch(NIGHTLY_INDEX_URL)
+	const request = await fetch(NIGHTLY_INDEX_URL, {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+	})
 	const text = await request.text()
 
 	const { document } = new JSDOM(text).window
@@ -138,7 +144,9 @@ export async function find_sdk_in_nightly_index(
 	url: string | URL
 ): Promise<URL> {
 	url = new URL(url)
-	const request = await fetch(url)
+	const request = await fetch(url, {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+	})
 	const text = await request.text()
 
 	const { document } = new JSDOM(text).window
@@ -165,7 +173,10 @@ export async function find_sdk_in_nightly_index(
 export async function get_sum_for_sdk(url: URL): Promise<string | undefined> {
 	const sums_url = new URL("./checksums.txt", url.href)
 
-	const head = await fetch(sums_url, { method: "HEAD" })
+	const head = await fetch(sums_url, {
+		method: "HEAD",
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+	})
 
 	if (head.status === 404) return undefined
 
@@ -177,7 +188,9 @@ export async function get_sum_for_sdk(url: URL): Promise<string | undefined> {
 		)
 	}
 
-	const response = await fetch(sums_url)
+	const response = await fetch(sums_url, {
+		signal: AbortSignal.timeout(FETCH_TIMEOUT_MS)
+	})
 	const file_text = await response.text()
 
 	const md5_section = file_text.split("# md5")[1]?.split("# sha1")[0]
