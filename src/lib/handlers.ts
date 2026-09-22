@@ -76,9 +76,8 @@ export function register_handlers(
 		}
 	})
 
-	const version_file_watcher = vscode.workspace.createFileSystemWatcher(
-		"**/.renpy-version"
-	)
+	const version_file_watcher =
+		vscode.workspace.createFileSystemWatcher("**/.renpy-version")
 	version_file_watcher.onDidCreate(on_server_relevant_change)
 	version_file_watcher.onDidChange(on_server_relevant_change)
 	version_file_watcher.onDidDelete(on_server_relevant_change)
