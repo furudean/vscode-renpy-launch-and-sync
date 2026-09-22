@@ -16,9 +16,9 @@ All notable changes to this project will be documented in this file.
 - Per-process output now routes to the _Debug Console_
 - _Open Ren'Py to current line_ no longer shows as an icon button in the
   editor's top-right toolbar. It's still available in other contexts.
+- Removed the `renpyWarp.launch` command, now redundant with _Run and Debug_
+- Removed the `renpyWarp.warpToFile` command
 - Process logs are no longer stored on system
-- Removed the `renpyWarp.launch` command and its `Alt+Shift+L` /
-  `⌘+Shift+L` keybinding, now redundant with `F5` in the _Run and Debug_ view
 
 ## 4.0.0 - 2026-09-15
 

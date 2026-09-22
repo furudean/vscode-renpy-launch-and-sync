@@ -16,12 +16,7 @@ import { StatusBar } from "./status_bar"
 import { FollowCursorService, sync_editor_with_renpy } from "./follow_cursor"
 import { get_logger } from "./log"
 import { is_system_label } from "./label"
-import {
-	get_statements,
-	next_resting_statement,
-	warp_refusal,
-	warp_target
-} from "./script"
+import { get_statements, warp_refusal, warp_target } from "./script"
 import path from "upath"
 import fs from "node:fs/promises"
 
@@ -56,39 +51,6 @@ export function get_commands(
 				await start_renpy({
 					intent: "Starting Ren'Py at line...",
 					file: editor.document.uri.fsPath,
-					line: target.warp_line,
-					pm,
-					status_bar
-				})
-			} catch (error: unknown) {
-				logger.error(error as Error)
-			}
-		},
-
-		"renpyWarp.warpToFile": async (uri: unknown) => {
-			const document =
-				uri instanceof vscode.Uri
-					? await vscode.workspace.openTextDocument(uri)
-					: vscode.window.activeTextEditor?.document
-
-			if (!document) return
-
-			// the top of a file is rarely a statement, so start at the first one
-			// the game comes to rest on
-			const target = next_resting_statement(get_statements(document), 0)
-
-			if (target === undefined) {
-				vscode.window.showErrorMessage(
-					"There is nothing to start at in this file, as it holds no statements Ren'Py can play",
-					"OK"
-				)
-				return
-			}
-
-			try {
-				await start_renpy({
-					intent: "Starting Ren'Py at file...",
-					file: document.uri.fsPath,
 					line: target.warp_line,
 					pm,
 					status_bar

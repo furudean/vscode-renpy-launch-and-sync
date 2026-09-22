@@ -217,12 +217,6 @@
 				"icon": "$(play)"
 			},
 			{
-				"command": "renpyWarp.warpToFile",
-				"title": "Open Ren'Py to file",
-				"category": "Ren'Py Launch",
-				"icon": "$(play)"
-			},
-			{
 				"command": "renpyWarp.jumpToLabel",
 				"title": "Open Ren'Py at label",
 				"category": "Ren'Py Launch",
@@ -315,10 +309,6 @@
 				{
 					"command": "renpyWarp.warpToLine",
 					"when": "resourceExtname == '.rpy'"
-				},
-				{
-					"command": "renpyWarp.warpToFile",
-					"when": "resourceExtname == '.rpy'"
 				}
 			],
 			"editor/context": [
@@ -334,13 +324,6 @@
 					"group": "renpywarp",
 					"when": "resourceExtname == '.rpy'"
 				}
-			],
-			"explorer/context": [
-				{
-					"command": "renpyWarp.warpToFile",
-					"group": "renpywarp",
-					"when": "resourceExtname == '.rpy'"
-				}
 			]
 		},
 		"keybindings": [
@@ -348,12 +331,6 @@
 				"command": "renpyWarp.warpToLine",
 				"key": "alt+shift+e",
 				"mac": "cmd+shift+e",
-				"when": "editorTextFocus && resourceExtname == '.rpy'"
-			},
-			{
-				"command": "renpyWarp.warpToFile",
-				"key": "alt+shift+f",
-				"mac": "cmd+shift+f",
 				"when": "editorTextFocus && resourceExtname == '.rpy'"
 			},
 			{
