@@ -118,12 +118,11 @@ export class RenpyDebugConfigurationProvider
 		config: RenpyDebugConfiguration
 	): Promise<RenpyDebugConfiguration | undefined> {
 		return config.request === "attach"
-			? this.resolve_attach(folder, config)
+			? this.resolve_attach(config)
 			: this.resolve_launch(folder, config)
 	}
 
 	private resolve_attach(
-		folder: vscode.WorkspaceFolder | undefined,
 		config: RenpyDebugConfiguration
 	): RenpyDebugConfiguration | undefined {
 		const rpp =
@@ -132,10 +131,9 @@ export class RenpyDebugConfigurationProvider
 				: undefined
 
 		if (!rpp) {
-			show_invalid_config_error(
-				folder,
-				config.name,
-				`No tracked Ren'Py process with pid ${config.pid}`
+			vscode.window.showErrorMessage(
+				`No tracked Ren'Py process with pid ${config.pid}`,
+				"OK"
 			)
 			return undefined
 		}
@@ -230,10 +228,9 @@ export class RenpyDebugConfigurationProvider
 				const target = next_resting_statement(statements, 0)
 
 				if (target === undefined) {
-					show_invalid_config_error(
-						folder,
-						config.name,
-						"There is nothing to start at in this file, as it holds no statements Ren'Py can play"
+					vscode.window.showErrorMessage(
+						"There is nothing to start at in this file, as it holds no statements Ren'Py can play",
+						"OK"
 					)
 					return undefined
 				}
@@ -243,11 +240,7 @@ export class RenpyDebugConfigurationProvider
 				const target = warp_target(statements, line - 1)
 
 				if (!target?.warpable) {
-					show_invalid_config_error(
-						folder,
-						config.name,
-						warp_refusal(target, line - 1)
-					)
+					vscode.window.showErrorMessage(warp_refusal(target, line - 1), "OK")
 					return undefined
 				}
 
