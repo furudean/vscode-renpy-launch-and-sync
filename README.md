@@ -6,15 +6,44 @@ Studio Code.
 ## Features
 
 - Start and quit your Ren'Py game directly through _Run and Debug_
-- Step forward and back through game dialogue, warp to a specific line, or jump to label without leaving VSCode
+- Step forward and back through game dialogue, warp to a specific line, or jump
+  to label.
 - Move cursor position in Visual Studio Code as dialogue progresses with the
   _Follow Cursor_ mode
-- A gutter decoration to remind you where you are in the game, even when the
-  cursor moves away
+- File decorations to remind you where you are in the game
+- Can manage installs of the Ren'Py SDK
+- Can discover and bind to games that were started outside of Visual Studio Code
 - Automatically enable autoreload when files change (with a setting)
-- Can discover and bind to games that were started outside of Visual Studio
-  Code
-- Can manage installs of the Ren'Py SDK directly from Visual Studio Code
+
+## Configuration
+
+Renpy Launch and Sync contributes a debugger type, so starting and stopping a
+game is done through Visual Studio Code's built-in _Run and Debug_ view. A
+default launch configuration works with no setup, but you can add your own to
+`.vscode/launch.json` to customize it:
+
+```jsonc
+{
+	"type": "renpyWarp",
+	"request": "launch",
+	"name": "Launch Ren'Py project",
+	// all properties optional below
+	"project": "/path/to/project", // automatic if not specified
+	"file": "script.rpy", // script to warp to on launch (useful with ${file})
+	"line": 11, // line in `file` to warp to (useful with `${lineNumber}`)
+	"args": [], // CLI arguments to pass to renpy
+	"env": {}, // environment variables to pass to renpy
+	"sdk": "8.3.7" // sdk version to use (or path to one), taking precedence over .renpy-version
+}
+```
+
+Per-process output is shown in the _Debug Console_ while a game is running. You
+can also use this to send console messages, like with
+<kbd>Ctrl</kbd>+<kbd>O</kbd>.
+
+The SDK version used is decided by a `.renpy-version` file in your project if
+not specified. The SDK can be automatically downloaded, or you can bring your
+own.
 
 ## Commands
 
@@ -23,31 +52,19 @@ to know about the following:
 
 | Command                         | Shortcut                                      | Shortcut (Mac)                             |
 | ------------------------------- | --------------------------------------------- | ------------------------------------------ |
-| Start Ren'Py project            | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>L</kbd> |
 | Open Ren'Py at the current line | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
 | Open Ren'Py at label            | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd> |
 | Go to current Ren'Py line       | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> | <kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
 | Toggle following cursor mode    | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
 
-### Triggers
+Starting and stopping a game happen through the _Run and Debug_ view, triggered
+by <kbd>F5</kbd> by default.
 
-The commands can be triggered in several ways:
+The commands can otherwise be triggered in several ways:
 
-1. By using title bar run menu ![](images/tab_bar.png)
-2. By using the right click context in an editor ![](images/editor_context.png)
-3. By using the right click context menu in the file explorer
-   ![](images/explorer_context.png)
-4. By using the status bar ![](images/status_bar.png)
-5. By opening the command palette and typing the command, i.e.
-   `Renpy: Open Ren'Py at current line`
-6. Via keyboard shortcut ([see here](#commands))
-
-## Configuration
-
-The SDK version used is decided by a `.renpy-version` file in your project. If
-you do not have one configured, you will be prompted to do so when you try and
-launch a game. The SDK can be automatically downloaded from Ren'Py's servers, or
-you can bring your own.
+1. By using the right click context in an editor ![](images/editor_context.png)
+2. By opening the command palette and typing the command, i.e.
+   `Renpy: Open Ren'Py at line`
 
 ### Strategy
 
