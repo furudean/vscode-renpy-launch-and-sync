@@ -71,7 +71,9 @@ describe("logical lines", () => {
 		assert.deepEqual(statements(`e "one # two"`), ["0 say"])
 	})
 
-	test("takes a monologue block as the one statement it is", () => {
+	test("takes each paragraph of a monologue block as its own statement", () => {
+		// ren'py warps to a paragraph by its own line, not the line the block
+		// opens on, so each one needs to be its own warp target
 		const script = [
 			`label ch1:`,
 			`    """`,
@@ -82,7 +84,24 @@ describe("logical lines", () => {
 			`    e "after"`
 		].join("\n")
 
-		assert.deepEqual(statements(script), ["0 label", "1 say-5", "6 say"])
+		assert.deepEqual(statements(script), [
+			"0 label",
+			"2 say",
+			"4 say-5",
+			"6 say"
+		])
+	})
+
+	test("takes a single-paragraph block as the one statement it is", () => {
+		const script = [
+			`label ch1:`,
+			`    """`,
+			`    Only paragraph.`,
+			`    """`,
+			`    e "after"`
+		].join("\n")
+
+		assert.deepEqual(statements(script), ["0 label", "1 say-3", "4 say"])
 	})
 
 	test("names a monologue block a say, whatever it opens with", () => {
@@ -617,6 +636,27 @@ describe("resolving a warp", () => {
 
 	test("gives up above the first statement in the file", () => {
 		assert.equal(target(script, 0), undefined)
+	})
+
+	test("lands an nvl character's monologue paragraph on its own line", () => {
+		const nvl_script = [
+			`define n = Character(None, kind=nvl)`,
+			``,
+			`label start:`,
+			`    n """`,
+			`    This is the first paragraph.`,
+			``,
+			`    This is the second paragraph.`,
+			`    """`,
+			`    n "next"`
+		].join("\n")
+
+		// line 3, where the block opens, has nothing of its own to warp to
+		assert.equal(target(nvl_script, 3), "2 label")
+		assert.equal(target(nvl_script, 4), "4 say")
+		assert.equal(target(nvl_script, 5), "4 say")
+		assert.equal(target(nvl_script, 6), "6 say")
+		assert.equal(target(nvl_script, 7), "6 say")
 	})
 
 	test("hands ren'py its own line number, not the editor's", () => {

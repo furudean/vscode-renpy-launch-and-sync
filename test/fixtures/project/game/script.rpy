@@ -26,3 +26,19 @@ label _simulate_menu:
     pause
 
     jump _return
+
+define n = Character(None, kind=nvl)
+
+label nvl_dialogue:
+
+    n """
+    This is the first nvl paragraph.
+
+    This is the second nvl paragraph.
+
+    This is the third nvl paragraph.
+    """
+
+    n "After the nvl dialogue."
+
+    return

@@ -373,6 +373,28 @@ function split_block(
 	return paragraphs
 }
 
+/**
+ * The line ranges of a monologue block's paragraphs, split on a blank line the
+ * way most such blocks are written. A block with no blank line in it comes
+ * back as the one paragraph it already is.
+ *
+ * @see https://github.com/renpy/renpy/blob/8.5.3.26051504/renpy/lexer.py#L1084
+ */
+export function monologue_paragraphs(
+	document: LineSource,
+	line: number
+): { line: number; end_line: number }[] {
+	const block = read_block(document, line)
+	const paragraphs = split_block(block, "\n\n").filter(
+		(paragraph) => paragraph.text !== CLEAR_TAG
+	)
+
+	return paragraphs.map((paragraph) => ({
+		line: paragraph.lines[0].line,
+		end_line: paragraph.lines[paragraph.lines.length - 1].line
+	}))
+}
+
 /** the paragraph of a monologue block most likely to be the one being said */
 function best_paragraph(
 	paragraphs: Paragraph[],

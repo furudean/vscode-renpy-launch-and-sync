@@ -27,6 +27,11 @@ const fake_md5 = createHash("md5").update(fake_zip).digest("hex")
 
 const checksums = (sum: string) => `# md5\n${sum}  ${FAKE_NAME}.zip\n# sha1\n`
 
+// nightly versions hold regex metacharacters (e.g. the "+" in "+nightly"),
+// which would otherwise change what the path pattern below matches
+const escape_regex = (text: string) =>
+	text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
 /**
  * serves the cached real sdk under /dl/<version>/ and the fake one under
  * /good/ (checksum matches) and /bad/ (checksum does not)
@@ -34,7 +39,8 @@ const checksums = (sum: string) => `# md5\n${sum}  ${FAKE_NAME}.zip\n# sha1\n`
 function serve_sdks(): Promise<import("node:http").Server> {
 	const server = http.createServer(async (request, response) => {
 		const url = new URL(request.url!, "http://localhost")
-		const cached = url.pathname.match(`^/dl/${SDK_VERSION}/([^/]+)$`)
+		const pathname = decodeURIComponent(url.pathname)
+		const cached = pathname.match(`^/dl/${escape_regex(SDK_VERSION)}/([^/]+)$`)
 
 		if (cached) {
 			const file = path.join(SDK_CACHE, cached[1])
@@ -480,6 +486,45 @@ suite("renpyWarp", function () {
 				{ process }
 			)
 		})
+
+		// TODO: re-enable once ren'py's fix for warping into a monologue
+		// block's individual paragraphs ships in a stable release
+		//
+		// test("warps to any paragraph of an nvl character's monologue block", async () => {
+		// 	// each paragraph of a triple-quoted, blank-line-separated block is
+		// 	// its own ren'py node with its own line, so placing the cursor on
+		// 	// any of them should warp straight to that paragraph rather than
+		// 	// always landing on the line the block opens on
+		// 	await vscode.commands.executeCommand("renpyWarp.killAll")
+		// 	await wait_for(() => api.pm.length === 0, "the game to die")
+		//
+		// 	const process = await running()
+		//
+		// 	const paragraphs = [
+		// 		{ line: 34, what: "This is the first nvl paragraph." },
+		// 		{ line: 36, what: "This is the second nvl paragraph." },
+		// 		{ line: 38, what: "This is the third nvl paragraph." }
+		// 	]
+		//
+		// 	const cursor = () => process.last_cursor
+		//
+		// 	for (const { line, what } of paragraphs) {
+		// 		process.last_cursor = undefined
+		// 		await show_line(script, line)
+		// 		await vscode.commands.executeCommand("renpyWarp.warpToLine")
+		//
+		// 		await wait_for(
+		// 			() => cursor() !== undefined,
+		// 			`ren'py to report warping to script.rpy:${line + 1}`,
+		// 			{ process }
+		// 		)
+		// 		assert.strictEqual(
+		// 			cursor()?.what,
+		// 			what,
+		// 			`warping to script.rpy:${line + 1}`
+		// 		)
+		// 	}
+		// })
 	})
 
 	suite("unmanaged processes", function () {

@@ -1,4 +1,4 @@
-import type { LineSource } from "./dialogue"
+import { monologue_paragraphs, type LineSource } from "./dialogue.ts"
 
 /** a statement ren'py's parser makes a node of */
 export interface Statement {
@@ -503,12 +503,48 @@ export function parse_statements(document: LineSource): Statement[] {
 		)
 
 		if (statement) {
-			statements.push({
-				line: line.line,
-				warp_line: line.warp_line,
-				end_line: line.end_line,
-				...statement
-			})
+			// a monologue block's paragraphs are ren'py nodes of their own,
+			// each warpable by its own line, rather than only the line the
+			// block opens on
+			const paragraphs =
+				statement.keyword === "say"
+					? monologue_paragraphs(document, line.line)
+					: []
+
+			const pieces =
+				paragraphs.length > 1
+					? paragraphs
+					: [{ line: line.line, end_line: line.end_line }]
+
+			// the block's own drift carries into every one of its paragraphs,
+			// but a backslash escaping a newline inside the block's string can
+			// trip ren'py's miscount again past the first paragraph, so each
+			// one needs the drift replayed up to its own line
+			let drift = line.warp_line - line.line
+			let scan_state: ScanState = { depth: 0, continued: false }
+			let cursor = line.line
+
+			for (const [index, piece] of pieces.entries()) {
+				while (cursor < piece.line) {
+					const scanned = scan(document.lineAt(cursor).text, scan_state)
+
+					if (scanned.ate_newline) drift -= 1
+
+					scan_state = scanned.state
+					cursor += 1
+				}
+
+				const last = index === pieces.length - 1
+
+				statements.push({
+					line: piece.line,
+					warp_line: piece.line + drift,
+					// the last paragraph reaches to the block's own end,
+					// which holds the closing delimiter
+					end_line: last ? line.end_line : piece.end_line,
+					...statement
+				})
+			}
 		}
 
 		previous = { indent: line.indent, block }
