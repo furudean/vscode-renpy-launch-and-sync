@@ -99,7 +99,12 @@ writeFileSync(
 export default defineConfig({
 	files: "out/**/*.e2e.test.js",
 	workspaceFolder: workspace,
-	env: { RENPY_SDK_VERSION: SDK_VERSION, RENPY_SDK_CACHE: sdk_cache },
+	env: {
+		RENPY_SDK_VERSION: SDK_VERSION,
+		RENPY_SDK_CACHE: sdk_cache,
+		RENPY_DISABLE_SOUND: "1", // be quiet
+		SDL_MAC_BACKGROUND_APP: "1" // dont steal focus
+	},
 	launchArgs: [
 		`--user-data-dir=${user_data_dir}`,
 		"--disable-extension=GitHub.copilot-chat",
