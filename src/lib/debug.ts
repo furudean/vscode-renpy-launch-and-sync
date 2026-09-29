@@ -507,6 +507,16 @@ export class RenpyDebugSession extends DebugSession {
 			return
 		}
 
+		if (rpp.debug_session_id !== undefined) {
+			this.sendErrorResponse(
+				response,
+				1002,
+				`Ren'Py process with pid ${pid} already has an active debug session`
+			)
+			this.sendEvent(new TerminatedEvent())
+			return
+		}
+
 		this.bind(rpp)
 		this.sendResponse(response)
 	}

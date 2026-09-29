@@ -684,6 +684,34 @@ suite("renpyWarp", function () {
 			}
 		})
 
+		test("closes the socket when a managed process is killed", async () => {
+			await update_config({ renpyExtensionsEnabled: "Enabled" })
+
+			try {
+				await launch_game()
+
+				const process = api.pm.at(-1)!
+				await wait_for(() => process.socket_ready, "the rpe to connect", {
+					process
+				})
+
+				const socket = process.socket!
+				assert.strictEqual(socket.readyState, 1 /* WebSocket.OPEN */)
+
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await wait_for(() => api.pm.length === 0, "the game to die")
+
+				assert.notStrictEqual(
+					socket.readyState,
+					1,
+					"the socket was left open after the process was killed"
+				)
+			} finally {
+				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await update_config({ renpyExtensionsEnabled: "Disabled" })
+			}
+		})
+
 		test("resolves the sdk a configuration names", async () => {
 			const resolve = (sdk: string) =>
 				api.debug_provider.resolveDebugConfigurationWithSubstitutedVariables(
@@ -710,6 +738,49 @@ suite("renpyWarp", function () {
 				undefined,
 				"a path holding no sdk was accepted"
 			)
+		})
+
+		test("treats a blank sdk value as none given", async () => {
+			// a whitespace-only value should short-circuit like an absent one,
+			// not fall through to a download attempt for a name of ""
+			const original_show_error = vscode.window.showErrorMessage
+			const messages: string[] = []
+			;(
+				vscode.window as unknown as {
+					showErrorMessage: typeof vscode.window.showErrorMessage
+				}
+			).showErrorMessage = ((message: string) => {
+				messages.push(message)
+				return Promise.resolve(undefined)
+			}) as typeof vscode.window.showErrorMessage
+
+			try {
+				const resolved =
+					await api.debug_provider.resolveDebugConfigurationWithSubstitutedVariables(
+						folder,
+						{
+							type: "renpyWarp",
+							request: "launch",
+							name: "t",
+							project: project_root,
+							sdk: "   "
+						}
+					)
+
+				assert.strictEqual(resolved, undefined)
+				assert.ok(
+					!messages.some((message) =>
+						message.includes("Could not find Ren'Py SDK")
+					),
+					'a blank sdk value tried to download an sdk named ""'
+				)
+			} finally {
+				;(
+					vscode.window as unknown as {
+						showErrorMessage: typeof vscode.window.showErrorMessage
+					}
+				).showErrorMessage = original_show_error
+			}
 		})
 
 		test("launches with the sdk a configuration names", async () => {
@@ -1016,6 +1087,56 @@ suite("renpyWarp", function () {
 				// it does not come back when the rpe reconnects
 				await sleep(1500)
 				assert.strictEqual(api.pm.length, 0, "the process was adopted again")
+
+				await launched.kill()
+				await (launched as ManagedProcess).wait_for_exit()
+				launched.dispose()
+			})
+
+			test("refuses a manual attach racing the automatic one", async () => {
+				assert.strictEqual(api.pm.length, 0)
+
+				const launched = await api.launch_unmanaged()
+				assert.ok(launched, "process did not launch")
+
+				await wait_for(
+					() => api.pm.length === 1,
+					"the process to be discovered"
+				)
+				const discovered = api.pm.at(0)!
+
+				// fire a manual attach for the same pid right as the socket server
+				// starts its own automatic one, racing the two bind attempts
+				const manual_attach = vscode.debug.startDebugging(folder, {
+					type: "renpyWarp",
+					request: "attach",
+					name: "manual",
+					pid: discovered.pid
+				})
+
+				await wait_for(
+					() => session_for(discovered.pid) !== undefined,
+					"a session to bind to the process",
+					{ process: discovered }
+				)
+
+				await manual_attach
+
+				// exactly one session ends up owning the process, whichever won
+				assert.strictEqual(
+					renpy_sessions().filter(
+						(session) =>
+							session.configuration.request === "attach" &&
+							session.configuration.pid === discovered.pid
+					).length,
+					1,
+					"two sessions bound to the same process"
+				)
+
+				await vscode.debug.stopDebugging(session_for(discovered.pid))
+				await wait_for(() => api.pm.length === 0, "the process to be dropped", {
+					process: discovered
+				})
 
 				await launched.kill()
 				await (launched as ManagedProcess).wait_for_exit()

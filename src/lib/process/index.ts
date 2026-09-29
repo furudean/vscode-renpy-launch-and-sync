@@ -111,7 +111,7 @@ export class UnmanagedProcess {
 					if (this.dead) return
 					this.dead = true
 					this.emit("exit")
-					clearInterval(this.check_alive_interval)
+					this.dispose()
 					resolve()
 				}
 			})
@@ -344,6 +344,7 @@ export class ManagedProcess extends UnmanagedProcess {
 		const exited = this.wait_for_exit()
 		this.process.kill()
 		await exited
+		this.dispose()
 	}
 
 	wait_for_exit(): Promise<number | null> {

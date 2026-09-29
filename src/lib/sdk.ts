@@ -224,7 +224,7 @@ export async function resolve_sdk_reference(
 ): Promise<string | undefined> {
 	const trimmed = reference.trim()
 
-	if (!reference) return undefined
+	if (!trimmed) return undefined
 
 	const sdk_path = await resolve_version_file_value(trimmed, context, true)
 

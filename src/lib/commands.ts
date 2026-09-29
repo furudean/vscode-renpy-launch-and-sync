@@ -57,6 +57,12 @@ export function get_commands(
 				})
 			} catch (error: unknown) {
 				logger.error(error as Error)
+				vscode.window
+					.showErrorMessage("Failed to warp to line", "OK", "Open Output")
+					.then((selection) => {
+						if (selection !== "Open Output") return
+						logger.show()
+					})
 			}
 		},
 

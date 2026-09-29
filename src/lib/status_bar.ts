@@ -71,35 +71,11 @@ export class StatusBar {
 			)
 		}
 
-		const version_file_watchers = new Map<string, vscode.Disposable>()
-		const sync_version_file_watchers = () => {
-			const folders = vscode.workspace.workspaceFolders ?? []
-			const seen = new Set(folders.map((f) => f.uri.toString()))
-
-			for (const [key, disposable] of version_file_watchers) {
-				if (!seen.has(key)) {
-					disposable.dispose()
-					version_file_watchers.delete(key)
-				}
-			}
-
-			for (const folder of folders) {
-				const key = folder.uri.toString()
-				if (version_file_watchers.has(key)) continue
-
-				const watcher = vscode.workspace.createFileSystemWatcher(
-					new vscode.RelativePattern(folder, "**/.renpy-version")
-				)
-				watcher.onDidCreate(update_status_bar_on_version_file_change)
-				watcher.onDidChange(update_status_bar_on_version_file_change)
-				watcher.onDidDelete(update_status_bar_on_version_file_change)
-				version_file_watchers.set(key, watcher)
-			}
-		}
-		sync_version_file_watchers()
-
-		const update_watchers_on_workspace_folders_change =
-			vscode.workspace.onDidChangeWorkspaceFolders(sync_version_file_watchers)
+		const version_file_watcher =
+			vscode.workspace.createFileSystemWatcher("**/.renpy-version")
+		version_file_watcher.onDidCreate(update_status_bar_on_version_file_change)
+		version_file_watcher.onDidChange(update_status_bar_on_version_file_change)
+		version_file_watcher.onDidDelete(update_status_bar_on_version_file_change)
 
 		// the native watcher above can still lag by a beat, so react to an
 		// in-editor save of the file itself immediately rather than waiting on it
@@ -116,9 +92,8 @@ export class StatusBar {
 			this.notification_bar,
 			update_status_bar_on_config_update,
 			update_status_bar_on_active_editor_change,
-			update_watchers_on_workspace_folders_change,
-			update_status_bar_on_version_file_save,
-			{ dispose: () => version_file_watchers.forEach((w) => w.dispose()) }
+			version_file_watcher,
+			update_status_bar_on_version_file_save
 		)
 
 		this.update_status_bar().catch((err) =>
