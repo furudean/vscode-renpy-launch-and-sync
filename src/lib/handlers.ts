@@ -76,11 +76,18 @@ export function register_handlers(
 		}
 	})
 
+	// a new sdk can need a new rpe, but it never changes whether the server runs
+	const on_version_file_change = () => {
+		if (get_config("renpyExtensionsEnabled") !== "Enabled") return
+
+		update_existing_rpes(context).catch((error) => logger.error(error))
+	}
+
 	const version_file_watcher =
 		vscode.workspace.createFileSystemWatcher("**/.renpy-version")
-	version_file_watcher.onDidCreate(on_server_relevant_change)
-	version_file_watcher.onDidChange(on_server_relevant_change)
-	version_file_watcher.onDidDelete(on_server_relevant_change)
+	version_file_watcher.onDidCreate(on_version_file_change)
+	version_file_watcher.onDidChange(on_version_file_change)
+	version_file_watcher.onDidDelete(on_version_file_change)
 
 	context.subscriptions.push(server_on_change, version_file_watcher)
 }

@@ -65,6 +65,27 @@ export function sort_remote_sdks(a: RemoteSdk, b: RemoteSdk): number {
 	return semver_compare(a.name, b.name)
 }
 
+interface Channels {
+	releases: { channel: string; split_version: number[] }[]
+}
+
+export async function fetch_stable_version(): Promise<string | undefined> {
+	const request = await fetch("https://renpy.org/channels.json")
+	if (!request.ok) return undefined
+
+	const { releases } = (await request.json()) as Channels
+	const release = releases.find((c) => c.channel === "Release")
+
+	return release?.split_version.slice(0, 3).join(".")
+}
+
+export function drop_unreleased(
+	sdks: RemoteSdk[],
+	stable_version: string
+): RemoteSdk[] {
+	return sdks.filter((sdk) => semver_compare(sdk.name, stable_version) >= 0)
+}
+
 export async function list_remote_sdks(): Promise<RemoteSdk[]> {
 	const urls = await fetch_and_parse_nginx_directory("https://renpy.org/dl/")
 

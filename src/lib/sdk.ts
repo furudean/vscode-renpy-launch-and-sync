@@ -19,6 +19,8 @@ import {
 import open from "open"
 import { get_executable, get_version } from "./sh"
 import {
+	drop_unreleased,
+	fetch_stable_version,
 	list_nightly_sdks,
 	list_remote_sdks,
 	RemoteSdk,
@@ -154,14 +156,20 @@ async function fetch_remote_sdk_catalog(
 	context: vscode.ExtensionContext
 ): Promise<RemoteSdkCatalog | undefined> {
 	try {
-		const [remote_sdks, nightly_sdks] = await Promise.all([
+		const [remote_sdks, nightly_sdks, stable_version] = await Promise.all([
 			list_remote_sdks(),
-			list_nightly_sdks()
+			list_nightly_sdks(),
+			fetch_stable_version().catch((error) => {
+				logger.warn("failed to fetch stable ren'py version:", error)
+				return undefined
+			})
 		])
 
 		if (remote_sdks.length === 0) return undefined
 
-		const all_valid_sdks = remote_sdks
+		const all_valid_sdks = stable_version
+			? drop_unreleased(remote_sdks, stable_version)
+			: remote_sdks
 
 		const filtered_sdks =
 			highest_patch_per_minor(all_valid_sdks).sort(sort_remote_sdks)
