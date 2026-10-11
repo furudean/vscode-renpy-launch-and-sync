@@ -1,8 +1,5 @@
-import { AnyProcess, ManagedProcess } from "."
+import { AnyProcess } from "."
 import { EventEmitter } from "node:events"
-import { get_logger } from "../log"
-
-const logger = get_logger()
 
 export class ProcessManager {
 	private processes = new Map<number, AnyProcess>()
@@ -64,18 +61,12 @@ export class ProcessManager {
 	}
 
 	clear() {
-		const processes = Array.from(this)
-		this.processes.clear()
-
-		for (const process of processes) {
-			if (process instanceof ManagedProcess) {
-				process.kill().catch((error) => {
-					logger.error(`failed to kill process ${process.pid}:`, error)
-				})
-			} else {
-				process.dispose()
-			}
+		for (const process of Array.from(this)) {
+			process.emit("exit")
+			process.dispose()
 		}
+
+		this.processes.clear()
 	}
 
 	dispose() {

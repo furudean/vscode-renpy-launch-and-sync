@@ -153,8 +153,6 @@ export class WarpSocketService {
 
 			this.deny_processes.clear()
 			this.allowed_processes.clear()
-			// every tracked process goes down with the server, which ends the
-			// debug sessions mirroring them
 			this.pm.clear()
 			this.status_bar.update(() => ({ socket_server_status: "stopped" }))
 			vscode.commands.executeCommand(
