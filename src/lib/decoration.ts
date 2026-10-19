@@ -5,9 +5,9 @@ import { get_config } from "./config"
 import { AnySocketMessage, CurrentLineSocketMessage } from "./socket"
 import { realpath } from "node:fs/promises"
 import { get_logger } from "./log"
-import { find_dialogue_range, said_range } from "./dialogue"
+import { said_range } from "./dialogue"
 import { dialogue_range } from "./mark"
-import { editor_line, get_statements } from "./script"
+import { get_statements, reported_position } from "./script"
 
 const logger = get_logger()
 
@@ -101,20 +101,13 @@ export class DecorationService {
 				for (const [, state] of this.state) {
 					if (path.relative(editor_path, state.path) !== "") continue
 
-					// ren'py's line numbering can run behind editor's
-					const line = editor_line(
+					const { line, dialogue } = reported_position(
+						editor.document,
 						get_statements(editor.document),
-						state.line - 1
+						state.line - 1,
+						state.what,
+						said_range(state)
 					)
-					const dialogue =
-						state.what === undefined
-							? undefined
-							: find_dialogue_range(
-									editor.document,
-									line,
-									state.what,
-									said_range(state)
-								)
 
 					if (this.gutter) {
 						const at = dialogue?.start.line ?? line

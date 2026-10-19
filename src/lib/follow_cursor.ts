@@ -5,16 +5,12 @@ import { get_logger } from "./log"
 import path from "upath"
 import { find_project_root } from "./sh"
 import { StatusBar } from "./status_bar"
-import {
-	DialogueRange,
-	find_dialogue_range,
-	said_range,
-	SaidRange
-} from "./dialogue"
+import { DialogueRange, said_range, SaidRange } from "./dialogue"
 import { cursor_selection, dialogue_range } from "./mark"
 import {
-	editor_line,
 	get_statements,
+	reported_position,
+	ReportedPosition,
 	warp_refusal,
 	warp_target
 } from "./script"
@@ -42,21 +38,25 @@ interface SyncEditorWithRenpyOptions {
 	pid?: number
 }
 
-function reported_dialogue(
+function locate_renpy(
 	document: vscode.TextDocument,
-	line: number,
+	warp_line: number,
 	what: string | undefined,
 	said: SaidRange | undefined
-): DialogueRange | undefined {
-	if (what === undefined) return undefined
+): ReportedPosition {
+	const position = reported_position(
+		document,
+		get_statements(document),
+		warp_line,
+		what,
+		said
+	)
 
-	const dialogue = find_dialogue_range(document, line, what, said)
-
-	if (dialogue === undefined) {
+	if (what !== undefined && position.dialogue === undefined) {
 		logger.debug(`could not find the dialogue ${JSON.stringify(what)}`)
 	}
 
-	return dialogue
+	return position
 }
 
 function reveal_dialogue(
@@ -64,8 +64,8 @@ function reveal_dialogue(
 	line: number,
 	dialogue: DialogueRange | undefined
 ): void {
-	// ren'py reports monologue blocks on the line they open on, so the dialogue
-	// can be further down the file than the line it came with
+	// ren'py below 8.6 reports a monologue block on its `"""` line, so the
+	// dialogue can be further down the file than the line it came with
 	const range = dialogue
 		? dialogue_range(dialogue)
 		: editor.document.lineAt(Math.min(line, editor.document.lineCount - 1))
@@ -93,11 +93,9 @@ export async function sync_editor_with_renpy({
 	const doc = await vscode.workspace.openTextDocument(path)
 	const editor = await vscode.window.showTextDocument(doc)
 
-	const line = editor_line(get_statements(doc), reported_line)
+	const { line, dialogue } = locate_renpy(doc, reported_line, what, said)
 
 	logger.debug(`syncing editor to ${relative_path}:${line}`)
-
-	const dialogue = reported_dialogue(editor.document, line, what, said)
 
 	reveal_dialogue(editor, line, dialogue)
 
@@ -134,14 +132,19 @@ function is_at_renpy_cursor(
 		return false
 	}
 
-	// ren'py reports the line a statement opens on, so anywhere inside one is
-	// the same place as far as warping goes
-	const target = warp_target(
-		get_statements(document),
-		editor.selection.active.line
+	const { statement } = locate_renpy(
+		document,
+		last_cursor.line - 1,
+		last_cursor.what,
+		said_range(last_cursor)
 	)
 
-	return target?.warp_line === last_cursor.line - 1
+	// anywhere inside a statement is the same place as far as warping goes
+	return (
+		statement !== undefined &&
+		statement ===
+			warp_target(get_statements(document), editor.selection.active.line)
+	)
 }
 
 function reveal_renpy_cursor(rp: AnyProcess, editor: vscode.TextEditor): void {
@@ -158,21 +161,14 @@ function reveal_renpy_cursor(rp: AnyProcess, editor: vscode.TextEditor): void {
 		return
 	}
 
-	const line = editor_line(
-		get_statements(editor.document),
-		last_cursor.line - 1
+	const { line, dialogue } = locate_renpy(
+		editor.document,
+		last_cursor.line - 1,
+		last_cursor.what,
+		said_range(last_cursor)
 	)
 
-	reveal_dialogue(
-		editor,
-		line,
-		reported_dialogue(
-			editor.document,
-			line,
-			last_cursor.what,
-			said_range(last_cursor)
-		)
-	)
+	reveal_dialogue(editor, line, dialogue)
 }
 
 export async function warp_renpy_to_cursor(

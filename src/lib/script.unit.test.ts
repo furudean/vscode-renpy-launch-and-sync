@@ -5,6 +5,7 @@ import {
 	get_statements,
 	next_resting_statement,
 	parse_statements,
+	reported_position,
 	warp_target,
 	type Statement
 } from "./script.ts"
@@ -21,15 +22,19 @@ function read(script: string): LineSource {
 
 /** the statements of a script, as `line keyword` pairs */
 function statements(script: string): string[] {
-	return parse_statements(read(script)).map(
-		(statement) =>
-			`${statement.line} ${statement.keyword}` +
+	return parse_statements(read(script)).map((statement) => {
+		const start = statement.start_line
+
+		return (
+			`${start} ${statement.keyword}` +
 			(statement.warpable ? "" : " (no warp)") +
-			(statement.end_line === statement.line ? "" : `-${statement.end_line}`) +
+			(statement.end_line === start ? "" : `-${statement.end_line}`) +
+			(statement.line === start ? "" : ` (paragraph at ${statement.line})`) +
 			(statement.warp_line === statement.line
 				? ""
 				: ` (ren'py calls it ${statement.warp_line})`)
-	)
+		)
+	})
 }
 
 /** the statement ren'py would warp to, as the `line keyword` it starts at */
@@ -38,7 +43,10 @@ function target(script: string, line: number): string | undefined {
 
 	if (!found) return undefined
 
-	return `${found.line} ${found.keyword}` + (found.warpable ? "" : " (no warp)")
+	return (
+		`${found.start_line} ${found.keyword}` +
+		(found.warpable ? "" : " (no warp)")
+	)
 }
 
 /** whether following the cursor would warp to `line`, and where */
@@ -72,8 +80,9 @@ describe("logical lines", () => {
 	})
 
 	test("takes each paragraph of a monologue block as its own statement", () => {
-		// ren'py warps to a paragraph by its own line, not the line the block
-		// opens on, so each one needs to be its own warp target
+		// ren'py 8.6 and up declares each paragraph on its own line, so each
+		// one needs to be its own warp target. the first also covers the
+		// block's `"""` line
 		const script = [
 			`label ch1:`,
 			`    """`,
@@ -86,7 +95,7 @@ describe("logical lines", () => {
 
 		assert.deepEqual(statements(script), [
 			"0 label",
-			"2 say",
+			"1 say-2 (paragraph at 2)",
 			"4 say-5",
 			"6 say"
 		])
@@ -101,7 +110,11 @@ describe("logical lines", () => {
 			`    e "after"`
 		].join("\n")
 
-		assert.deepEqual(statements(script), ["0 label", "1 say-3", "4 say"])
+		assert.deepEqual(statements(script), [
+			"0 label",
+			"1 say-3 (paragraph at 2)",
+			"4 say"
+		])
 	})
 
 	test("names a monologue block a say, whatever it opens with", () => {
@@ -112,7 +125,10 @@ describe("logical lines", () => {
 			`    """`
 		].join("\n")
 
-		assert.deepEqual(statements(script), ["0 label", "1 say-3"])
+		assert.deepEqual(statements(script), [
+			"0 label",
+			"1 say-3 (paragraph at 2)"
+		])
 	})
 
 	test("takes a string spanning lines as one statement", () => {
@@ -626,9 +642,9 @@ describe("resolving a warp", () => {
 		assert.equal(target(script, 3), "3 label")
 	})
 
-	test("holds the cursor on the statement a monologue block opens", () => {
-		// ren'py reports every paragraph on the line the block opens on, so the
-		// whole block warps to one place
+	test("holds the cursor on a monologue block of one paragraph", () => {
+		// the block is one statement, from its first `"""` through its
+		// last
 		assert.equal(target(script, 5), "5 say")
 		assert.equal(target(script, 7), "5 say")
 		assert.equal(target(script, 8), "5 say")
@@ -651,12 +667,82 @@ describe("resolving a warp", () => {
 			`    n "next"`
 		].join("\n")
 
-		// line 3, where the block opens, has nothing of its own to warp to
-		assert.equal(target(nvl_script, 3), "2 label")
-		assert.equal(target(nvl_script, 4), "4 say")
-		assert.equal(target(nvl_script, 5), "4 say")
+		assert.equal(target(nvl_script, 3), "3 say")
+		assert.equal(target(nvl_script, 4), "3 say")
+		assert.equal(target(nvl_script, 5), "3 say")
 		assert.equal(target(nvl_script, 6), "6 say")
 		assert.equal(target(nvl_script, 7), "6 say")
+	})
+
+	test("warps from a monologue block's triple-quote line to its first paragraph", () => {
+		// ren'py below 8.6 declares the paragraph on the `"""` line and 8.6 on
+		// its own, and only the paragraph's line warps right under both
+		const nvl_script = [
+			`label start:`,
+			`    n """`,
+			`    The only paragraph.`,
+			`    """`
+		].join("\n")
+
+		const statements = parse_statements(read(nvl_script))
+
+		assert.equal(warp_target(statements, 1)?.warp_line, 2)
+		assert.equal(next_resting_statement(statements, 1)?.warp_line, 2)
+	})
+
+	test("turns a monologue block's reported line back into the editor's", () => {
+		const statements = parse_statements(
+			read(
+				[
+					`label start:`,
+					`    """`,
+					`    First paragraph.`,
+					``,
+					`    Second paragraph.`,
+					`    """`
+				].join("\n")
+			)
+		)
+
+		// ren'py below 8.6 reports every paragraph on the `"""` line
+		assert.equal(editor_line(statements, 1), 1)
+		// 8.6 and up reports each on its own
+		assert.equal(editor_line(statements, 2), 2)
+		assert.equal(editor_line(statements, 4), 4)
+	})
+
+	test("finds the monologue paragraph ren'py is on from its dialogue", () => {
+		const document = read(
+			[
+				`label start:`,
+				`    """`,
+				`    First paragraph.`,
+				``,
+				`    Second paragraph.`,
+				`    """`
+			].join("\n")
+		)
+		const statements = parse_statements(document)
+
+		/** the line of the paragraph ren'py is on, and where its dialogue starts */
+		const at = (warp_line: number, what: string) => {
+			const found = reported_position(
+				document,
+				statements,
+				warp_line,
+				what,
+				undefined
+			)
+
+			return [found.statement?.line, found.dialogue?.start.line]
+		}
+
+		// ren'py below 8.6 reports every paragraph on the `"""` line
+		assert.deepEqual(at(1, "First paragraph."), [2, 2])
+		assert.deepEqual(at(1, "Second paragraph."), [4, 4])
+		// 8.6 and up reports each on its own
+		assert.deepEqual(at(2, "First paragraph."), [2, 2])
+		assert.deepEqual(at(4, "Second paragraph."), [4, 4])
 	})
 
 	test("hands ren'py its own line number, not the editor's", () => {
@@ -704,7 +790,7 @@ describe("resolving a warp", () => {
 		const statements = parse_statements(read(script))
 
 		assert.equal(next_resting_statement(statements, 0)?.line, 4)
-		assert.equal(next_resting_statement(statements, 5)?.line, 5)
+		assert.equal(next_resting_statement(statements, 5)?.line, 6)
 		assert.equal(next_resting_statement(statements, 10), undefined)
 	})
 })

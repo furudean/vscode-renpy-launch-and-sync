@@ -342,8 +342,8 @@ function read_block(document: LineSource, line: number): BlockLine[] {
 
 /**
  * Splits a block the way the lexer splits on `monologue_delimiter`. Ren'Py
- * makes a statement of each piece, but reports them all on the line the block
- * opens on.
+ * makes a statement of each piece. Versions below 8.6 report them all on
+ * the block's `"""` line.
  * @see https://github.com/renpy/renpy/blob/8.5.3.26051504/renpy/lexer.py#L1084
  */
 function split_block(

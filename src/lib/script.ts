@@ -1,9 +1,20 @@
-import { monologue_paragraphs, type LineSource } from "./dialogue.ts"
+import {
+	find_dialogue_range,
+	monologue_paragraphs,
+	type DialogueRange,
+	type LineSource,
+	type SaidRange
+} from "./dialogue.ts"
 
 /** a statement ren'py's parser makes a node of */
 export interface Statement {
 	/** 0-indexed line the statement starts on */
 	line: number
+	/**
+	 * 0-indexed line the statement covers the cursor from. a monologue
+	 * block's first paragraph covers its block's `"""` line too
+	 */
+	start_line: number
 	/**
 	 * 0-indexed line ren'py declares.
 	 *
@@ -13,6 +24,11 @@ export interface Statement {
 	warp_line: number
 	/** 0-indexed line the statement's logical line ends on */
 	end_line: number
+	/**
+	 * 0-indexed line holding the first `"""` of the monologue block this
+	 * paragraph belongs to, as in `n """`
+	 */
+	quote_line?: number
 	/** the keyword the parser dispatches on, or `say` for dialogue */
 	keyword: string
 	/**
@@ -504,15 +520,15 @@ export function parse_statements(document: LineSource): Statement[] {
 
 		if (statement) {
 			// a monologue block's paragraphs are ren'py nodes of their own,
-			// each warpable by its own line, rather than only the line the
-			// block opens on
+			// each warpable by its own line, rather than only the block's
+			// `"""` line
 			const paragraphs =
 				statement.keyword === "say"
 					? monologue_paragraphs(document, line.line)
 					: []
 
 			const pieces =
-				paragraphs.length > 1
+				paragraphs.length > 0
 					? paragraphs
 					: [{ line: line.line, end_line: line.end_line }]
 
@@ -538,10 +554,12 @@ export function parse_statements(document: LineSource): Statement[] {
 
 				statements.push({
 					line: piece.line,
+					start_line: index === 0 ? line.line : piece.line,
 					warp_line: piece.line + drift,
 					// the last paragraph reaches to the block's own end,
 					// which holds the closing delimiter
 					end_line: last ? line.end_line : piece.end_line,
+					...(paragraphs.length > 0 && { quote_line: line.line }),
 					...statement
 				})
 			}
@@ -565,7 +583,7 @@ export function warp_target(
 	let target: Statement | undefined
 
 	for (const statement of statements) {
-		if (statement.line > line) break
+		if (statement.start_line > line) break
 
 		target = statement
 	}
@@ -587,12 +605,62 @@ export function editor_line(
 	// statements come in order and ren'py only ever falls further behind, so
 	// the last one at or before the reported line carries the skew that applies
 	for (const statement of statements) {
-		if (statement.warp_line > warp_line) break
+		const lost = statement.line - statement.warp_line
 
-		skew = statement.line - statement.warp_line
+		// ren'py below 8.6 reports a monologue block on its `"""` line
+		const reported_at = statement.start_line - lost
+
+		if (reported_at > warp_line) break
+
+		skew = lost
 	}
 
 	return warp_line + skew
+}
+
+/** where in the editor ren'py says it is */
+export interface ReportedPosition {
+	/** 0-indexed editor line ren'py reported */
+	line: number
+	/** the dialogue ren'py is showing, if it can be found */
+	dialogue: DialogueRange | undefined
+	/** the statement ren'py is on */
+	statement: Statement | undefined
+}
+
+/**
+ * Finds where ren'py is from the line it reports and the dialogue it shows.
+ * Ren'py below 8.6 reports every paragraph of a monologue block on the
+ * block's `"""` line, and 8.6 and up reports each on its own line. Either way
+ * the dialogue is searched for from the `"""` line, and decides the paragraph.
+ */
+export function reported_position(
+	document: LineSource,
+	statements: readonly Statement[],
+	warp_line: number,
+	what: string | undefined,
+	said: SaidRange | undefined
+): ReportedPosition {
+	const line = editor_line(statements, warp_line)
+	const statement = warp_target(statements, line)
+
+	const search_line =
+		statement?.quote_line !== undefined && line <= statement.end_line
+			? statement.quote_line
+			: line
+
+	const dialogue =
+		what === undefined
+			? undefined
+			: find_dialogue_range(document, search_line, what, said)
+
+	return {
+		line,
+		dialogue,
+		statement: dialogue
+			? warp_target(statements, dialogue.start.line)
+			: statement
+	}
 }
 
 /** the first statement the game comes to rest on at or after editor `line` */
@@ -602,7 +670,7 @@ export function next_resting_statement(
 ): Statement | undefined {
 	return statements.find(
 		(statement) =>
-			statement.line >= line && statement.warpable && statement.stops
+			statement.start_line >= line && statement.warpable && statement.stops
 	)
 }
 
