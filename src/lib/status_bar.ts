@@ -2,12 +2,36 @@ import * as vscode from "vscode"
 import path from "upath"
 import { get_config } from "./config"
 import { get_logger } from "./log"
-import { find_project_root, get_executable, get_version } from "./sh"
+import {
+	find_project_root,
+	get_executable,
+	get_version,
+	RenpyVersion
+} from "./sh"
 import tildify from "tildify"
 import { get_sdk_path, get_version_file_raw_value } from "./sdk"
 import { is_explicit_path } from "./path"
 
 const logger = get_logger()
+
+type ProjectSdk =
+	/** resolved to an sdk with a working executable */
+	| { kind: "installed"; path: string; version: RenpyVersion; source?: string }
+	/** the version file names a version that isn't downloaded */
+	| { kind: "named"; name: string; source?: string }
+	| { kind: "none" }
+
+function active_project_root(): string | undefined {
+	const document = vscode.window.activeTextEditor?.document
+
+	if (document?.uri.scheme !== "file") return undefined
+
+	return find_project_root(document.uri.fsPath) ?? undefined
+}
+
+function with_source(text: string, source: string | undefined): string {
+	return source ? `${text} (from ${source})` : text
+}
 
 export class StatusBar {
 	private context: vscode.ExtensionContext
@@ -27,6 +51,10 @@ export class StatusBar {
 		message: undefined as string | undefined,
 		message_level: undefined as number | undefined
 	}
+
+	private sdk: ProjectSdk | undefined
+	private project_root: string | undefined
+	private sdk_generation = 0
 
 	constructor(context: vscode.ExtensionContext) {
 		this.context = context
@@ -51,38 +79,34 @@ export class StatusBar {
 			10_000
 		)
 
-		const update_status_bar_on_config_update =
-			vscode.workspace.onDidChangeConfiguration(() => {
-				this.update_status_bar().catch((err) =>
-					logger.error("failed to update status bar:", err)
-				)
+		// files.exclude narrows the search for projects
+		const refresh_sdk_on_config_update =
+			vscode.workspace.onDidChangeConfiguration((e) => {
+				if (
+					e.affectsConfiguration("renpyWarp") ||
+					e.affectsConfiguration("files.exclude")
+				) {
+					this.refresh_sdk()
+				}
 			})
 
-		const update_status_bar_on_active_editor_change =
-			vscode.window.onDidChangeActiveTextEditor(() => {
-				this.update_status_bar().catch((err) =>
-					logger.error("failed to update status bar:", err)
-				)
-			})
+		const refresh_sdk_on_active_editor_change =
+			vscode.window.onDidChangeActiveTextEditor(() => this.refresh_sdk())
 
-		const update_status_bar_on_version_file_change = () => {
-			this.update_status_bar().catch((err) =>
-				logger.error("failed to update status bar:", err)
-			)
-		}
+		const refresh_sdk_on_version_file_change = () => this.refresh_sdk()
 
 		const version_file_watcher =
 			vscode.workspace.createFileSystemWatcher("**/.renpy-version")
-		version_file_watcher.onDidCreate(update_status_bar_on_version_file_change)
-		version_file_watcher.onDidChange(update_status_bar_on_version_file_change)
-		version_file_watcher.onDidDelete(update_status_bar_on_version_file_change)
+		version_file_watcher.onDidCreate(refresh_sdk_on_version_file_change)
+		version_file_watcher.onDidChange(refresh_sdk_on_version_file_change)
+		version_file_watcher.onDidDelete(refresh_sdk_on_version_file_change)
 
 		// the native watcher above can still lag by a beat, so react to an
 		// in-editor save of the file itself immediately rather than waiting on it
-		const update_status_bar_on_version_file_save =
+		const refresh_sdk_on_version_file_save =
 			vscode.workspace.onDidSaveTextDocument((document) => {
 				if (path.basename(document.uri.fsPath) === ".renpy-version") {
-					update_status_bar_on_version_file_change()
+					refresh_sdk_on_version_file_change()
 				}
 			})
 
@@ -90,15 +114,13 @@ export class StatusBar {
 			this.instance_bar,
 			this.follow_cursor_bar,
 			this.notification_bar,
-			update_status_bar_on_config_update,
-			update_status_bar_on_active_editor_change,
+			refresh_sdk_on_config_update,
+			refresh_sdk_on_active_editor_change,
 			version_file_watcher,
-			update_status_bar_on_version_file_save
+			refresh_sdk_on_version_file_save
 		)
 
-		this.update_status_bar().catch((err) =>
-			logger.error("failed to update status bar:", err)
-		)
+		this.refresh_sdk()
 	}
 
 	update(fn: (state: typeof this.state) => Partial<typeof this.state>) {
@@ -115,9 +137,10 @@ export class StatusBar {
 
 		logger.debug("status bar state:", this.state)
 
-		this.update_status_bar().catch((err) =>
-			logger.error("failed to update status bar:", err)
-		)
+		this.render()
+
+		// launching can download the sdk a version file names
+		if ("running_processes" in incoming_state) this.refresh_sdk()
 	}
 
 	notify(message: string, level = 0) {
@@ -126,7 +149,54 @@ export class StatusBar {
 		}
 	}
 
-	private async update_status_bar() {
+	private refresh_sdk(): void {
+		const generation = ++this.sdk_generation
+		const project_root = active_project_root()
+
+		this.resolve_sdk(project_root)
+			.then((sdk) => {
+				// a newer refresh started, possibly for another editor
+				if (generation !== this.sdk_generation) return
+
+				this.project_root = project_root
+				this.sdk = sdk
+				this.render()
+			})
+			.catch((err) => logger.error("failed to update status bar:", err))
+	}
+
+	private async resolve_sdk(
+		project_root: string | undefined
+	): Promise<ProjectSdk> {
+		const { version_file, raw_value } =
+			await get_version_file_raw_value(project_root)
+		const source = version_file
+			? vscode.workspace.asRelativePath(version_file)
+			: undefined
+
+		const sdk_path = await get_sdk_path(this.context, false, project_root, {
+			version_file,
+			raw_value
+		})
+		const executable = sdk_path ? await get_executable(sdk_path) : undefined
+
+		if (sdk_path && executable) {
+			return {
+				kind: "installed",
+				path: sdk_path,
+				version: await get_version(executable),
+				source
+			}
+		}
+
+		if (raw_value && !is_explicit_path(raw_value)) {
+			return { kind: "named", name: raw_value, source }
+		}
+
+		return { kind: "none" }
+	}
+
+	private render() {
 		if (this.state.message) {
 			this.notification_bar.text = this.state.message
 			this.notification_bar.show()
@@ -134,34 +204,13 @@ export class StatusBar {
 			this.notification_bar.hide()
 		}
 
-		const active_document = vscode.window.activeTextEditor?.document
-		const current_file =
-			active_document?.uri.scheme === "file"
-				? active_document.uri.fsPath
-				: undefined
-		const current_project_root = current_file
-			? find_project_root(current_file)
-			: null
-
-		const { version_file, raw_value } = await get_version_file_raw_value(
-			current_project_root ?? undefined
-		)
-
-		const sdk_path = await get_sdk_path(
-			this.context,
-			false,
-			current_project_root ?? undefined,
-			{ version_file, raw_value }
-		)
-
-		const version_file_source = version_file
-			? vscode.workspace.asRelativePath(version_file)
-			: undefined
+		const sdk = this.sdk
+		const installed = sdk?.kind === "installed"
 
 		const extensions_enabled =
 			get_config("renpyExtensionsEnabled") === "Enabled"
 
-		if (sdk_path && this.state.running_processes > 0 && extensions_enabled) {
+		if (installed && this.state.running_processes > 0 && extensions_enabled) {
 			this.follow_cursor_bar.show()
 		} else {
 			this.follow_cursor_bar.hide()
@@ -185,7 +234,7 @@ export class StatusBar {
 		}
 
 		if (
-			sdk_path &&
+			installed &&
 			this.state.socket_server_status === "stopped" &&
 			extensions_enabled
 		) {
@@ -197,53 +246,43 @@ export class StatusBar {
 			this.instance_bar.hide()
 		}
 
-		let executable: string[] | undefined
-		let version: string | undefined
+		if (!sdk) return
 
-		if (sdk_path) {
-			executable = await get_executable(sdk_path)
-		}
+		switch (sdk.kind) {
+			case "installed": {
+				const location = tildify(sdk.path)
 
-		if (executable) {
-			const v = await get_version(executable)
-			version = v.display
-		}
+				// the extension's own downloads go by version alone
+				this.sdk_bar.text = sdk.path.includes(
+					"/globalStorage/paisleysoftworks.renpywarp/"
+				)
+					? `$(warp-renpy) ${sdk.version.display}`
+					: `$(warp-renpy) ${location} (${sdk.version.display})`
+				this.sdk_bar.tooltip = with_source(
+					`Using Ren'Py SDK at ${location}`,
+					sdk.source
+				)
+				break
+			}
 
-		if (!sdk_path || !executable || !version) {
-			if (raw_value && !is_explicit_path(raw_value)) {
-				this.sdk_bar.backgroundColor = undefined
-				this.sdk_bar.color = undefined
-				this.sdk_bar.text = `$(warp-renpy) ${raw_value}`
-				this.sdk_bar.tooltip = version_file_source
-					? `Using Ren'Py SDK ${raw_value} (from ${version_file_source})`
-					: `Using Ren'Py SDK ${raw_value}`
-			} else {
+			case "named":
+				this.sdk_bar.text = `$(warp-renpy) ${sdk.name}`
+				this.sdk_bar.tooltip = with_source(
+					`Using Ren'Py SDK ${sdk.name}`,
+					sdk.source
+				)
+				break
+
+			case "none":
 				this.sdk_bar.text = "$(warp-renpy)"
-				this.sdk_bar.backgroundColor = undefined
-				this.sdk_bar.color = undefined
 				this.sdk_bar.tooltip = "No Ren'Py SDK configured"
-			}
-		} else {
-			this.sdk_bar.backgroundColor = undefined
-			this.sdk_bar.color = undefined
-
-			if (
-				// if is managed by the extension
-				sdk_path.includes("/globalStorage/paisleysoftworks.renpywarp/")
-			) {
-				this.sdk_bar.text = `$(warp-renpy) ${version}`
-			} else {
-				this.sdk_bar.text = `$(warp-renpy) ${tildify(sdk_path)} (${version})`
-			}
-
-			this.sdk_bar.tooltip = version_file_source
-				? `Using Ren'Py SDK at ${tildify(sdk_path)} (from ${version_file_source})`
-				: `Using Ren'Py SDK at ${tildify(sdk_path)}`
+				break
 		}
+
 		this.sdk_bar.command = {
 			title: "Set SDK Path",
 			command: "renpyWarp.setSdkPath",
-			arguments: [current_project_root ?? undefined]
+			arguments: [this.project_root]
 		}
 		this.sdk_bar.show()
 	}
