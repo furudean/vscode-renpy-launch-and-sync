@@ -19,7 +19,7 @@ Studio Code.
 
 Renpy Launch and Sync contributes a debugger type, so starting and stopping a
 game is done through Visual Studio Code's built-in _Run and Debug_ view. A
-default launch configuration works with no setup, but you can add your own to
+default launch configuration works, but you can add your own to
 `.vscode/launch.json` to customize it:
 
 ```jsonc
@@ -33,7 +33,7 @@ default launch configuration works with no setup, but you can add your own to
 	"line": 11, // line in `file` to warp to (useful with `${lineNumber}`)
 	"args": [], // CLI arguments to pass to renpy
 	"env": {}, // environment variables to pass to renpy
-	"sdk": "8.3.7" // sdk version to use (or path to one), taking precedence over .renpy-version
+	"sdk": "8.3.7" // sdk version to use (or path to one), taking precedence over .renpy-version file
 }
 ```
 
@@ -41,9 +41,8 @@ Per-process output is shown in the _Debug Console_ while a game is running. You
 can also use this to send console messages, like with
 <kbd>Ctrl</kbd>+<kbd>O</kbd>.
 
-The SDK version used is decided by a `.renpy-version` file in your project if
-not specified. The SDK can be automatically downloaded, or you can bring your
-own.
+The SDK version used is decided by a `.renpy-version` file in your project. This
+can contain a SemVer version or an absolute path to an SDK on disk.
 
 ## Commands
 
