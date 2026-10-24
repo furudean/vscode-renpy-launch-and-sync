@@ -49,12 +49,12 @@ can contain a SemVer version or an absolute path to an SDK on disk.
 The extension provides many commands to interact with Ren'Py. You probably want
 to know about the following:
 
-| Command                         | Shortcut                                      | Shortcut (Mac)                             |
-| ------------------------------- | --------------------------------------------- | ------------------------------------------ |
-| Open Ren'Py at the current line | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
-| Open Ren'Py at label            | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd> |
-| Go to current Ren'Py line       | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> | <kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
-| Toggle following cursor mode    | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
+| Command                      | Shortcut                                      | Shortcut (Mac)                             |
+| ---------------------------- | --------------------------------------------- | ------------------------------------------ |
+| Open Ren'Py to line          | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
+| Open Ren'Py at label         | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd> |
+| Go to current Ren'Py line    | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> | <kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
+| Toggle following cursor mode | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
 
 Starting and stopping a game happen through the _Run and Debug_ view, triggered
 by <kbd>F5</kbd> by default.
@@ -63,7 +63,7 @@ The commands can otherwise be triggered in several ways:
 
 1. By using the right click context in an editor ![](images/editor_context.png)
 2. By opening the command palette and typing the command, i.e.
-   `Renpy: Open Ren'Py at line`
+   `Ren'Py Launch: Open Ren'Py to line`
 
 ### Strategy
 

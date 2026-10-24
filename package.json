@@ -232,7 +232,7 @@
 			},
 			{
 				"command": "renpyWarp.syncCursorPosition",
-				"title": "Go to to current Ren'Py line",
+				"title": "Go to current Ren'Py line",
 				"category": "Ren'Py Launch",
 				"enablement": "renpyWarp.runningProcesses > 0"
 			},
