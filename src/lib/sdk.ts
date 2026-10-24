@@ -351,7 +351,7 @@ export async function prompt_sdk_quick_pick(
 	) {
 		current_custom_label = tildify(current_sdk_path)
 		const executable = await get_executable(current_sdk_path)
-		const version = executable && get_version(executable)?.semver
+		const version = executable && (await get_version(executable)).semver
 		if (version) current_custom_label += ` (${version})`
 	}
 

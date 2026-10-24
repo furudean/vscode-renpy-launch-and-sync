@@ -205,7 +205,7 @@ export class StatusBar {
 		}
 
 		if (executable) {
-			const v = get_version(executable)
+			const v = await get_version(executable)
 			version = v.display
 		}
 

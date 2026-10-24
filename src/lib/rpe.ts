@@ -62,7 +62,7 @@ export async function install_rpe({
 	project_root: string
 	context: vscode.ExtensionContext
 }): Promise<string | undefined> {
-	const version = get_version(executable)
+	const version = await get_version(executable)
 
 	if (semver.lt(version.semver, "8.0.0")) {
 		logger.error(
@@ -168,7 +168,7 @@ export async function has_current_rpe({
 	const rpe_source = await get_rpe_source(context.extensionPath)
 	const checksum = get_checksum(rpe_source)
 
-	const renpy_version = get_version(executable)
+	const renpy_version = await get_version(executable)
 	logger.debug("renpy version (semver):", renpy_version.semver)
 
 	if (semver.lt(renpy_version.semver, "8.2.0")) return false
@@ -215,7 +215,7 @@ export async function prompt_install_rpe({
 	message?: string
 	force?: boolean
 }): Promise<string | undefined> {
-	const version = get_version(executable)
+	const version = await get_version(executable)
 
 	if (semver.lt(version.semver, "8.2.0")) {
 		await prompt_not_rpy8_invalid_configuration(version.display, project)

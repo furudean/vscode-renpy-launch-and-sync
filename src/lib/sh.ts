@@ -4,9 +4,9 @@ import { get_logger } from "./log"
 import { get_config } from "./config"
 import os from "node:os"
 import child_process from "node:child_process"
+import { promisify } from "node:util"
 import { path_exists, resolve_path } from "./path"
 import fs from "node:fs/promises"
-import { statSync } from "node:fs"
 import find_process from "find-process"
 import p_find from "p-locate"
 import { path_is_sdk } from "./sdk"
@@ -29,51 +29,32 @@ const RENPY_VERSION_REGEX =
 
 const version_cache = new Map<
 	string,
-	{ mtime: number; version: RenpyVersion }
+	{ mtime: number; version: Promise<RenpyVersion> }
 >()
 
-function executable_mtime(executable: string[]): number | undefined {
+async function executable_mtime(
+	executable: string[]
+): Promise<number | undefined> {
 	try {
-		return statSync(executable[0]).mtimeMs
+		return (await fs.stat(executable[0])).mtimeMs
 	} catch {
 		return undefined
 	}
 }
 
-/**
- * @param executable
- * base renpy.sh command
- */
-export function get_version(executable: string[]): RenpyVersion {
-	// asking ren'py blocks for a few hundred milliseconds, and the status bar
-	// asks again every time the cursor moves
-	const key = executable.join("\u0000")
-	const mtime = executable_mtime(executable)
-	const cached = version_cache.get(key)
+const exec_file = promisify(child_process.execFile)
 
-	if (mtime !== undefined && cached?.mtime === mtime) return cached.version
-
+async function read_version(executable: string[]): Promise<RenpyVersion> {
 	logger.debug("getting version for", executable)
-
-	const version_string = child_process.spawnSync(
+	const { stdout, stderr } = await exec_file(
 		executable[0],
 		[...executable.slice(1), "--version"],
-		{
-			stdio: "pipe",
-			encoding: "utf-8"
-		}
+		{ encoding: "utf-8" }
 	)
-
-	if (version_string.error) throw version_string.error
-
-	// output commonly usually stderr, but we try and capture whichever one has
-	// a valid value just in case
-	const output = version_string.output
-		.find((o) => typeof o === "string" && o.length > 0)
-		?.trim() as string | undefined
+	const output = [stdout, stderr].find((o) => o.length > 0)?.trim()
 
 	if (output === undefined) {
-		throw new Error(`bad output from version command ${version_string.output}`)
+		throw new Error("no output from version command")
 	}
 
 	const { major, minor, patch, rest } =
@@ -85,11 +66,9 @@ export function get_version(executable: string[]): RenpyVersion {
 
 	const semver = `${major}.${minor}.${patch}`
 
-	const display = rest.includes("+")
-		? `${major}.${minor}.${patch}${rest}`
-		: semver
+	const display = rest?.includes("+") ? `${semver}.${rest}` : semver
 
-	const version: RenpyVersion = {
+	return {
 		semver,
 		major: Number(major),
 		minor: Number(minor),
@@ -98,8 +77,32 @@ export function get_version(executable: string[]): RenpyVersion {
 		display,
 		raw: output
 	}
+}
 
-	if (mtime !== undefined) version_cache.set(key, { mtime, version })
+/**
+ * gets the cached version for an executable
+ *
+ * @param executable
+ * base renpy.sh command
+ */
+export async function get_version(executable: string[]): Promise<RenpyVersion> {
+	const key = executable.join("\u0000")
+	const mtime = await executable_mtime(executable)
+	const cached = version_cache.get(key)
+
+	if (mtime !== undefined && cached?.mtime === mtime) return cached.version
+
+	const version = read_version(executable)
+
+	if (mtime !== undefined) {
+		version_cache.set(key, { mtime, version })
+
+		version.catch(() => {
+			if (version_cache.get(key)?.version === version) {
+				version_cache.delete(key)
+			}
+		})
+	}
 
 	return version
 }
