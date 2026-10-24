@@ -18,6 +18,8 @@ All notable changes to this project will be documented in this file.
   editor's top-right toolbar. It's still available in other contexts.
 - Removed the `renpyWarp.launch` command, now redundant with _Run and Debug_
 - Removed the `renpyWarp.warpToFile` command
+- Removed the `renpyWarp.strategy` setting. An open game is always warped in
+  place when Ren'Py extensions are enabled.
 - Process logs are no longer stored on system
 - Removed the `renpyWarp.processEnvironment` setting, now redundant with the
   `env` launch configuration attribute

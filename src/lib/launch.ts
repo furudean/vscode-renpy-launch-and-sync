@@ -50,7 +50,6 @@ export async function warp_game({
 		line === undefined ||
 		!Number.isInteger(line) ||
 		pm.length === 0 ||
-		get_config("strategy") !== "Update Window" ||
 		get_config("renpyExtensionsEnabled") !== "Enabled"
 	) {
 		return undefined
@@ -125,7 +124,6 @@ export async function launch_renpy({
 }: LaunchRenpyOptions): Promise<ManagedProcess | undefined> {
 	logger.info("launch_renpy:", { file, line })
 
-	const strategy = get_config("strategy")
 	let extensions_enabled = get_config("renpyExtensionsEnabled")
 
 	const nonce = Math.trunc(Math.random() * Number.MAX_SAFE_INTEGER)
@@ -172,8 +170,6 @@ export async function launch_renpy({
 
 		await wss.start()
 	}
-
-	if (strategy === "Replace Window") pm.at(-1)?.kill()
 
 	let cmds = [...executable, project_root]
 

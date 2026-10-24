@@ -65,35 +65,6 @@ The commands can otherwise be triggered in several ways:
 2. By opening the command palette and typing the command, i.e.
    `Ren'Py Launch: Open Ren'Py to line`
 
-### Strategy
-
-You may want to customize what to do with an open Ren'Py instance when a new
-command is issued. In Renpy Launch and Sync, this is called a "strategy".
-
-The strategy is controlled with the setting <code
-codesetting="renpyWarp.strategy">renpyWarp.strategy</code>, which can be set to
-one of the following values:
-
-<dl>
-   <dt><strong>Update Window</strong></dt>
-   <dd>
-      <p>
-         When a command is issued, replace an open editor by sending a
-         <code>renpy.warp_to_line()</code> command to the currently running
-         Ren'Py instance
-      </p>
-   </dd>
-   <dt><strong>New window</strong></dt>
-   <dd>
-      Open a new Ren'Py instance when a command is issued
-   </dd>
-   <dt><strong>Replace window</strong></dt>
-   <dd>
-      Kill the currently running Ren'Py instance and open a new one when a
-      command is issued
-   </dd>
-</dl>
-
 ### Follow Cursor
 
 Renpy Launch and Sync can keep its cursor in sync with the Ren'Py game. The

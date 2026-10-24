@@ -352,22 +352,6 @@
 		"configuration": {
 			"title": "Ren'Py Launch and Sync",
 			"properties": {
-				"renpyWarp.strategy": {
-					"type": "string",
-					"default": "Update Window",
-					"markdownDescription": "How to treat an existing Ren'Py instance when a warping command is issued",
-					"order": 1,
-					"enum": [
-						"Update Window",
-						"New Window",
-						"Replace Window"
-					],
-					"markdownEnumDescriptions": [
-						"Execute `renpy.warp_to_line()` in the open instance.\n\n**Note**: This setting is is ignored if `#renpyWarp.renpyExtensionsEnabled#` is enabled.",
-						"Launch a new instance when a command is executed.",
-						"Kill the existing instance and launch a new one."
-					]
-				},
 				"renpyWarp.renpyExtensionsEnabled": {
 					"type": "string",
 					"enum": [

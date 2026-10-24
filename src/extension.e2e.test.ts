@@ -312,7 +312,6 @@ suite("renpyWarp", function () {
 		suiteSetup(async () => {
 			await update_config({
 				renpyExtensionsEnabled: "Enabled",
-				strategy: "Update Window",
 				followCursorOnLaunch: true,
 				followCursorMode: "Update both",
 				followCursorBehavior: "Cursor at line end"
@@ -641,8 +640,7 @@ suite("renpyWarp", function () {
 
 		test("warps the open game rather than starting a second one", async () => {
 			await update_config({
-				renpyExtensionsEnabled: "Enabled",
-				strategy: "Update Window"
+				renpyExtensionsEnabled: "Enabled"
 			})
 
 			try {
@@ -672,8 +670,7 @@ suite("renpyWarp", function () {
 				)
 			} finally {
 				await update_config({
-					renpyExtensionsEnabled: "Disabled",
-					strategy: "Update Window"
+					renpyExtensionsEnabled: "Disabled"
 				})
 			}
 		})

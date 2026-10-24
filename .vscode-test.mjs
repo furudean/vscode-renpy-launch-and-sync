@@ -86,7 +86,6 @@ writeFileSync(
 		"workbench.tips.enabled": false,
 		"update.showReleaseNotes": false,
 
-		"renpyWarp.strategy": "Update Window",
 		"renpyWarp.renpyExtensionsEnabled": "Disabled",
 		"renpyWarp.autoConnectExternalProcesses": "Never connect",
 		"renpyWarp.followCursorMode": "Ren'Py updates Visual Studio Code",
