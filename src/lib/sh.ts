@@ -263,12 +263,23 @@ export async function get_executable(
 }
 
 export async function process_finished(pid: number): Promise<boolean> {
-	const [process] = await find_process("pid", pid)
+	// find-process spawns powershell on windows, which is expensive to poll.
+	// windows has no zombies, so a signal 0 probe is enough.
+	if (IS_WINDOWS) {
+		try {
+			process.kill(pid, 0)
+			return false
+		} catch (error) {
+			return (error as NodeJS.ErrnoException).code === "ESRCH"
+		}
+	}
 
-	logger.trace(`process ${pid} status:`, process)
+	const [proc] = await find_process("pid", pid)
+
+	logger.trace(`process ${pid} status:`, proc)
 
 	// defunct processes are zombies - they're dead, but still in the process
 	// table. the renpy launcher will leave a defunct process behind until it's
 	// closed, so we need to check for this specifically.
-	return process === undefined || process.name === "<defunct>"
+	return proc === undefined || proc.name === "<defunct>"
 }

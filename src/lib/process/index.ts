@@ -58,7 +58,7 @@ export class UnmanagedProcess {
 					this.emit("exit")
 					clearInterval(this.check_alive_interval)
 				}
-			}, 400)
+			}, 1000)
 		}
 
 		this.on("socketMessage", (message: AnySocketMessage) => {

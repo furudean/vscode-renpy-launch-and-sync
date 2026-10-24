@@ -21,6 +21,7 @@ All notable changes to this project will be documented in this file.
 - Process logs are no longer stored on system
 - Removed the `renpyWarp.processEnvironment` setting, now redundant with the
   `env` launch configuration attribute
+- Fix high CPU usage on Windows while checking for process liveness
 
 ## 4.0.0 - 2026-09-15
 
