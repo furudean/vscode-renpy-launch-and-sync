@@ -11,7 +11,7 @@ All notable changes to this project will be documented in this file.
 - Required versions will be downloaded on demand as opposed to when selected
 - Nightly versions of Ren'Py are more clearly visually displayed
 - Now implements the VSCode debugger protocol for connected games.
-- The status bar no longer startcs games. Starting and stopping happen through
+- The status bar no longer starts games. Starting and stopping happen through
   the _Run and Debug_ view.
 - Per-process output now routes to the _Debug Console_
 - _Open Ren'Py to current line_ no longer shows as an icon button in the
