@@ -45,13 +45,16 @@ export function register_handlers(
 		await update_existing_rpes(context)
 
 		logger.info("server settings changed")
-		if (
-			get_config("autoStartSocketServer") &&
+		const extensions_enabled =
 			get_config("renpyExtensionsEnabled") === "Enabled"
-		) {
+
+		if (get_config("autoStartSocketServer") && extensions_enabled) {
 			wss.start()
 		} else {
 			wss.close()
+		}
+
+		if (!extensions_enabled) {
 			const sdk_path = await get_sdk_path(context, false)
 			if (sdk_path) {
 				for (const folder of vscode.workspace.workspaceFolders ?? []) {
