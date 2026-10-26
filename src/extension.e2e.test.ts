@@ -754,6 +754,34 @@ suite("renpyWarp", function () {
 			}
 		})
 
+		test("keeps a launched game when the socket server closes", async () => {
+			await update_config({ renpyExtensionsEnabled: "Enabled" })
+
+			try {
+				await launch_game()
+
+				const process = api.pm.at(-1)!
+				await wait_for(() => process.socket_ready, "the rpe to connect", {
+					process
+				})
+
+				await update_config({ renpyExtensionsEnabled: "Disabled" })
+				await wait_for(() => !process.socket_ready, "the socket to close", {
+					process
+				})
+
+				assert.strictEqual(api.pm.length, 1, "the game was dropped")
+				assert.strictEqual(renpy_sessions().length, 1, "the session ended")
+			} finally {
+				await api.pm.kill_all()
+				await wait_for(() => api.pm.length === 0, "the game to die")
+				await wait_for(
+					() => renpy_sessions().length === 0,
+					"the session to terminate"
+				)
+			}
+		})
+
 		test("resolves the sdk a configuration names", async () => {
 			const resolve = (sdk: string) =>
 				api.debug_provider.resolveDebugConfigurationWithSubstitutedVariables(

@@ -153,7 +153,7 @@ export class WarpSocketService {
 
 			this.deny_processes.clear()
 			this.allowed_processes.clear()
-			this.pm.clear()
+			this.pm.disconnect_all()
 			this.status_bar.update(() => ({ socket_server_status: "stopped" }))
 			vscode.commands.executeCommand(
 				"setContext",
@@ -228,6 +228,9 @@ export class WarpSocketService {
 	public close() {
 		if (this.socket_server) {
 			logger.info("stopping socket server")
+
+			// the server only emits "close" once every client has gone
+			for (const client of this.socket_server.clients) client.close()
 			this.socket_server.close()
 		}
 	}

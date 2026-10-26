@@ -63,13 +63,17 @@ export class ProcessManager {
 		await Promise.all(Array.from(this).map((process) => process.kill()))
 	}
 
-	clear() {
-		for (const process of Array.from(this)) {
+	disconnect_all() {
+		for (const [id, process] of Array.from(this.processes)) {
+			if (process instanceof ManagedProcess) {
+				process.socket?.close()
+				continue
+			}
+
 			process.emit("exit")
 			process.dispose()
+			this.processes.delete(id)
 		}
-
-		this.processes.clear()
 	}
 
 	dispose() {
