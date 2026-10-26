@@ -229,7 +229,7 @@ suite("renpyWarp", function () {
 		const process = api.pm.at(0) as ManagedProcess
 
 		const exited = new Promise((resolve) => process.once("exit", resolve))
-		await vscode.commands.executeCommand("renpyWarp.killAll")
+		await api.pm.kill_all()
 		await exited
 
 		// a game that died on its own would have left an exit code behind
@@ -319,7 +319,7 @@ suite("renpyWarp", function () {
 		})
 
 		suiteTeardown(async () => {
-			await vscode.commands.executeCommand("renpyWarp.killAll")
+			await api.pm.kill_all()
 
 			await update_config({
 				renpyExtensionsEnabled: "Disabled",
@@ -463,7 +463,7 @@ suite("renpyWarp", function () {
 		})
 
 		test("launches the game warped to a line", async () => {
-			await vscode.commands.executeCommand("renpyWarp.killAll")
+			await api.pm.kill_all()
 			await wait_for(() => api.pm.length === 0, "the game to die")
 
 			await show_line(script, editor_line(7))
@@ -494,7 +494,7 @@ suite("renpyWarp", function () {
 		// 	// its own ren'py node with its own line, so placing the cursor on
 		// 	// any of them should warp straight to that paragraph rather than
 		// 	// always landing on the line the block opens on
-		// 	await vscode.commands.executeCommand("renpyWarp.killAll")
+		// 	await api.pm.kill_all()
 		// 	await wait_for(() => api.pm.length === 0, "the game to die")
 		//
 		// 	const process = await running()
@@ -537,7 +537,7 @@ suite("renpyWarp", function () {
 		})
 
 		suiteTeardown(async () => {
-			await vscode.commands.executeCommand("renpyWarp.killAll")
+			await api.pm.kill_all()
 
 			await update_config({
 				renpyExtensionsEnabled: "Disabled",
@@ -607,7 +607,7 @@ suite("renpyWarp", function () {
 
 		suiteTeardown(async () => {
 			for (const listener of listeners) listener.dispose()
-			await vscode.commands.executeCommand("renpyWarp.killAll")
+			await api.pm.kill_all()
 		})
 
 		test("launches the game as a debug session", async () => {
@@ -662,7 +662,7 @@ suite("renpyWarp", function () {
 				assert.strictEqual(api.pm.length, 1, "a second game was started")
 				assert.strictEqual(renpy_sessions().length, 1, "a second session ran")
 
-				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await api.pm.kill_all()
 				await wait_for(() => api.pm.length === 0, "the game to die")
 				await wait_for(
 					() => renpy_sessions().length === 0,
@@ -715,7 +715,7 @@ suite("renpyWarp", function () {
 					"the console never named the process"
 				)
 
-				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await api.pm.kill_all()
 				await wait_for(() => api.pm.length === 0, "the game to die")
 				await wait_for(
 					() => renpy_sessions().length === 0,
@@ -740,7 +740,7 @@ suite("renpyWarp", function () {
 				const socket = process.socket!
 				assert.strictEqual(socket.readyState, 1 /* WebSocket.OPEN */)
 
-				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await api.pm.kill_all()
 				await wait_for(() => api.pm.length === 0, "the game to die")
 
 				assert.notStrictEqual(
@@ -749,7 +749,7 @@ suite("renpyWarp", function () {
 					"the socket was left open after the process was killed"
 				)
 			} finally {
-				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await api.pm.kill_all()
 				await update_config({ renpyExtensionsEnabled: "Disabled" })
 			}
 		})
@@ -845,7 +845,7 @@ suite("renpyWarp", function () {
 				await write_version_file(sdk_path)
 			}
 
-			await vscode.commands.executeCommand("renpyWarp.killAll")
+			await api.pm.kill_all()
 			await wait_for(() => api.pm.length === 0, "the game to die")
 			await wait_for(
 				() => renpy_sessions().length === 0,
@@ -897,7 +897,7 @@ suite("renpyWarp", function () {
 			})
 
 			suiteTeardown(async () => {
-				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await api.pm.kill_all()
 				await update_config({ renpyExtensionsEnabled: "Disabled" })
 			})
 
@@ -923,7 +923,7 @@ suite("renpyWarp", function () {
 			}
 
 			async function stop(process: AnyProcess): Promise<void> {
-				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await api.pm.kill_all()
 				await wait_for(() => process.dead, "the game to die")
 				await wait_for(
 					() => renpy_sessions().length === 0,
@@ -1090,7 +1090,7 @@ suite("renpyWarp", function () {
 			})
 
 			suiteTeardown(async () => {
-				await vscode.commands.executeCommand("renpyWarp.killAll")
+				await api.pm.kill_all()
 
 				await update_config({
 					renpyExtensionsEnabled: "Disabled",

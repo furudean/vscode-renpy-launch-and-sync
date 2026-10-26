@@ -219,12 +219,6 @@
 				"enablement": "renpyWarp.renpyExtensionsEnabled"
 			},
 			{
-				"command": "renpyWarp.killAll",
-				"title": "Kill active Ren'Py instances",
-				"category": "Ren'Py Launch",
-				"enablement": "renpyWarp.runningProcesses > 0"
-			},
-			{
 				"command": "renpyWarp.toggleFollowCursor",
 				"title": "Toggle following cursor mode",
 				"category": "Ren'Py Launch",
@@ -332,11 +326,6 @@
 				"command": "renpyWarp.jumpToLabel",
 				"key": "alt+shift+j",
 				"mac": "cmd+shift+j"
-			},
-			{
-				"command": "renpyWarp.killAll",
-				"key": "alt+shift+k",
-				"mac": "cmd+shift+k"
 			},
 			{
 				"command": "renpyWarp.toggleFollowCursor",

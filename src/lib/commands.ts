@@ -296,8 +296,6 @@ export function get_commands(
 			})
 		},
 
-		"renpyWarp.killAll": () => pm.kill_all(),
-
 		"renpyWarp.installRpe": async () => {
 			const projects = await find_projects_in_workspaces()
 			for (const project_root of projects) {
