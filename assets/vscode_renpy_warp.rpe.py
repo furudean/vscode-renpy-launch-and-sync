@@ -226,9 +226,9 @@ def console_jump(rest):
 
     script = textwrap.dedent(f"""
         if renpy.context_nesting_level() > 0:
-            renpy.jump_out_of_context('{label}')
+            renpy.jump_out_of_context({label!r})
         else:
-            renpy.jump('{label}')
+            renpy.jump({label!r})
     """)
     renpy.python.py_exec(script)
 
@@ -306,7 +306,8 @@ def socket_listener(websocket):
             file = payload["file"]
             line = payload["line"]
 
-            py_exec(f"renpy.warp_to_line('{file}:{line}')")
+            # !r so server-supplied values are only ever string literals
+            py_exec(f"renpy.warp_to_line({f'{file}:{int(line)}'!r})")
 
         elif payload["type"] == "set_autoreload":
             script = textwrap.dedent("""
@@ -332,13 +333,13 @@ def socket_listener(websocket):
                 console_send, payload.get("nonce"), payload["code"], websocket))
 
         elif payload["type"] == "jump_to_label":
-            label = payload["label"]
+            label = str(payload["label"])
 
             script = textwrap.dedent(f"""
                 if renpy.context_nesting_level() > 0:
-                    renpy.jump_out_of_context('{label}')
+                    renpy.jump_out_of_context({label!r})
                 else:
-                    renpy.jump('{label}')
+                    renpy.jump({label!r})
             """)
 
             py_exec(script)
