@@ -829,7 +829,6 @@ def try_endpoints_forever():
                 stop = socket_service(
                     path=path, version=version, checksum=checksum)
 
-            # keep the thread alive, so the game can reconnect
             except Exception:
                 logger.exception(f"socket service on {path} failed")
                 stop = False
