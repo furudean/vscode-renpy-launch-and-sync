@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
   the debugger instead.
 - Removed the `renpyWarp.processEnvironment` setting, now redundant with the
   `env` launch configuration attribute
+- An invalid launch configuration now shows an error with a button to edit it
 
 ### SDK management
 
@@ -27,12 +28,17 @@ All notable changes to this project will be documented in this file.
 - Required versions will be downloaded on demand as opposed to when selected
 - As a result of the above, `renpyWarp.downloadSdk` command is removed
 - Nightly versions of Ren'Py are more clearly visually displayed
+- The SDK picker no longer lists versions newer than the current stable release
 - Ren'Py extensions now explicitly require Ren'Py 8.3 or newer. This has been an
   informal requirement for a while.
 
 ### Other changes
 
 - Use UNIX pipes (or named pipes on Windows) for IPC for better security
+- Escape values sent by the extension before Ren'Py extensions use them
+- Removed the settings migration for `renpyWarp.renpyExtensionsEnabled` from
+  v1.5.0 and older
+- The extension is now published as a single package for all platforms
 - _Open Ren'Py to current line_ no longer shows as an icon button in the
   editor's top-right toolbar. It's still available in other contexts.
 - Removed the `renpyWarp.warpToFile` command
@@ -42,6 +48,10 @@ All notable changes to this project will be documented in this file.
 ### Fixes
 
 - Fix high CPU usage on Windows while checking for process liveness
+- Fix `init` blocks with a priority, such as `init 5 python:`, not being
+  recognized as Python blocks
+- Each paragraph of a monologue block (`"""text"""`) can now be warped to by
+  its own line. (Requires Ren'Py 8.6 or newer.)
 
 ## 4.0.0 - 2026-09-15
 
