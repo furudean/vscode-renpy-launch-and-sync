@@ -99,9 +99,12 @@ class Connection:
             self._buffer += chunk
 
         frame, self._buffer = self._buffer.split(DELIMITER, 1)
-        message = json.loads(frame.decode("utf-8"))
+        try:
+            message = json.loads(frame.decode("utf-8"))
+        except ValueError as e:
+            raise ValueError(f"malformed frame {frame!r}") from e
 
-        if message.get("type") == "close":
+        if isinstance(message, dict) and message.get("type") == "close":
             raise ConnectionClosed(reconnect=message.get("reconnect", True))
 
         return message
@@ -260,7 +263,6 @@ def connect(path):
 
 
 def ipc_dirs():
-
     uid = os.getuid()
     dirs = []
 
@@ -585,57 +587,67 @@ def socket_send(message, connection):
     logger.debug(f"sent message: {message}")
 
 
-def socket_listener(connection):
-    """listens for messages from the socket server"""
+def handle_message(payload, connection):
+    if payload["type"] == "warp_to_line":
+        file = payload["file"]
+        line = payload["line"]
 
+        # !r so server-supplied values are only ever string literals
+        py_exec(f"renpy.warp_to_line({f'{file}:{int(line)}'!r})")
+
+    elif payload["type"] == "set_autoreload":
+        script = textwrap.dedent("""
+            if renpy.get_autoreload() == False:
+                renpy.set_autoreload(True)
+                renpy.reload_script()
+        """)
+        py_exec(script)
+
+    elif payload["type"] == "advance":
+        py_exec("renpy.end_interaction(True)")
+
+    elif payload["type"] == "rollback":
+        global _resume_context
+        _resume_context = None
+        py_exec("renpy.rollback(force=True, checkpoints=1, greedy=True)")
+
+    elif payload["type"] == "next_checkpoint":
+        invoke(begin_next_checkpoint)
+
+    elif payload["type"] == "console":
+        invoke(functools.partial(
+            console_send, payload.get("nonce"), payload["code"], connection))
+
+    elif payload["type"] == "jump_to_label":
+        label = str(payload["label"])
+
+        script = textwrap.dedent(f"""
+            if renpy.context_nesting_level() > 0:
+                renpy.jump_out_of_context({label!r})
+            else:
+                renpy.jump({label!r})
+        """)
+
+        py_exec(script)
+
+    else:
+        logger.warning(f"unhandled message type '{payload['type']}'")
+
+
+def socket_listener(connection):
     while True:
-        payload = connection.receive()
+        try:
+            payload = connection.receive()
+        except ValueError:
+            logger.exception("dropped a malformed frame")
+            continue
+
         logger.debug(f"receive message: {payload}")
 
-        if payload["type"] == "warp_to_line":
-            file = payload["file"]
-            line = payload["line"]
-
-            # !r so server-supplied values are only ever string literals
-            py_exec(f"renpy.warp_to_line({f'{file}:{int(line)}'!r})")
-
-        elif payload["type"] == "set_autoreload":
-            script = textwrap.dedent("""
-                if renpy.get_autoreload() == False:
-                    renpy.set_autoreload(True)
-                    renpy.reload_script()
-            """)
-            py_exec(script)
-
-        elif payload["type"] == "advance":
-            py_exec("renpy.end_interaction(True)")
-
-        elif payload["type"] == "rollback":
-            global _resume_context
-            _resume_context = None
-            py_exec("renpy.rollback(force=True, checkpoints=1, greedy=True)")
-
-        elif payload["type"] == "next_checkpoint":
-            invoke(begin_next_checkpoint)
-
-        elif payload["type"] == "console":
-            invoke(functools.partial(
-                console_send, payload.get("nonce"), payload["code"], connection))
-
-        elif payload["type"] == "jump_to_label":
-            label = str(payload["label"])
-
-            script = textwrap.dedent(f"""
-                if renpy.context_nesting_level() > 0:
-                    renpy.jump_out_of_context({label!r})
-                else:
-                    renpy.jump({label!r})
-            """)
-
-            py_exec(script)
-
-        else:
-            logger.warning(f"unhandled message type '{payload['type']}'")
+        try:
+            handle_message(payload, connection)
+        except Exception:
+            logger.exception(f"failed to handle frame {payload!r}")
 
 
 def socket_producer(connection):
@@ -763,8 +775,8 @@ def socket_service(path, version, checksum):
             logger.debug(f"{path} turned the connection away")
             return not e.reconnect
 
-        if reply.get("type") != "welcome":
-            logger.warning(f"expected welcome, got '{reply.get('type')}'")
+        if not isinstance(reply, dict) or reply.get("type") != "welcome":
+            logger.warning(f"expected welcome, got {reply!r}")
             return False
 
         quitting = False
@@ -793,7 +805,7 @@ def socket_service(path, version, checksum):
             renpy.config.quit_action = original_quit_action
 
         if stop and not quitting:
-            logger.info("connection replaced, service exiting")
+            logger.info("server asked not to reconnect, service exiting")
         else:
             logger.info(f"socket service on {path} exited")
 
@@ -809,7 +821,16 @@ def try_endpoints_forever():
 
     while True:
         for path in list_endpoints():
-            if socket_service(path=path, version=version, checksum=checksum):
+            try:
+                stop = socket_service(
+                    path=path, version=version, checksum=checksum)
+
+            # keep the thread alive, so the game can reconnect
+            except Exception:  # noqa: BLE001
+                logger.exception(f"socket service on {path} failed")
+                stop = False
+
+            if stop:
                 logger.info("service closed")
                 return
 
