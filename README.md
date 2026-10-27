@@ -94,9 +94,9 @@ codesetting="renpyWarp.followCursorOnLaunch">renpyWarp.followCursorOnLaunch</cod
 
 ## Version support
 
-Ren'Py 8.2+ is fully supported.
+Ren'Py 8.3+ is fully supported.
 
-Ren'Py 8.1 and earlier does not support RPE features.
+Ren'Py 8.2 and earlier does not support RPE features.
 
 ## Troubleshooting
 

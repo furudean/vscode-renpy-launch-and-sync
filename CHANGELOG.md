@@ -26,6 +26,8 @@ All notable changes to this project will be documented in this file.
 - Removed the `renpyWarp.processEnvironment` setting, now redundant with the
   `env` launch configuration attribute
 - Fix high CPU usage on Windows while checking for process liveness
+- Ren'Py extensions now explicitly require Ren'Py 8.3 or newer. This has been an
+  informal requirement for a while.
 
 ## 4.0.0 - 2026-09-15
 

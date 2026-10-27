@@ -853,17 +853,4 @@ def start_renpy_warp_service():
             "service thread started. periodically looking for warp server")
 
 
-def declassify():
-    """
-    removes `renpy_warp_*.rpe{.py}` from build
-
-    on renpy 8.3 and later, this is automatically done by the renpy build system
-    """
-
-    classify = renpy.python.store_dicts["store.build"]["classify"]
-    classify("game/renpy_warp_*.rpe", None)
-    classify("game/renpy_warp_*.rpe.py", None)
-
-
-renpy.game.post_init.append(declassify)
 renpy.config.display_start_callbacks.append(start_renpy_warp_service)
