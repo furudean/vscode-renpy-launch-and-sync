@@ -763,14 +763,14 @@ suite("renpyWarp", function () {
 				})
 
 				const socket = process.socket!
-				assert.strictEqual(socket.readyState, 1 /* WebSocket.OPEN */)
+				assert.strictEqual(socket.open, true)
 
 				await api.pm.kill_all()
 				await wait_for(() => api.pm.length === 0, "the game to die")
 
-				assert.notStrictEqual(
-					socket.readyState,
-					1,
+				assert.strictEqual(
+					socket.open,
+					false,
 					"the socket was left open after the process was killed"
 				)
 			} finally {

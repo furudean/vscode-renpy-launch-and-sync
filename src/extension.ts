@@ -75,7 +75,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		context
 	})
 
-	context.subscriptions.push(pm, follow_cursor, status_bar, ds)
+	context.subscriptions.push(pm, follow_cursor, status_bar, ds, wss)
 
 	function sync_process_count() {
 		vscode.commands.executeCommand(

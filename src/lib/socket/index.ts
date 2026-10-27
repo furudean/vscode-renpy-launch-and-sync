@@ -1,24 +1,25 @@
 import * as vscode from "vscode"
 
-import { get_logger } from "./log"
-import WebSocket, { WebSocketServer } from "ws"
+import { get_logger } from "../log"
+import { createServer, Server } from "node:net"
+import { userInfo } from "node:os"
+import { chmod, lstat, mkdir, readdir, rm } from "node:fs/promises"
 import {
 	AnyProcess,
 	ManagedProcess,
 	ProcessManager,
 	UnmanagedProcess
-} from "./process"
-import get_port from "get-port"
-import { StatusBar } from "./status_bar"
-import { prompt_install_rpe, get_rpe_checksum } from "./rpe"
+} from "../process"
+import { StatusBar } from "../status_bar"
+import { prompt_install_rpe, get_rpe_checksum } from "../rpe"
 import path from "upath"
-import { get_config, set_config } from "./config"
-import { createServer, IncomingMessage } from "node:http"
-import { find_projects_in_workspaces } from "./path"
-import { FollowCursorService, sync_editor_with_renpy } from "./follow_cursor"
-import { get_executable } from "./sh"
-import { get_sdk_path } from "./sdk"
-import { said_range } from "./dialogue"
+import { get_config, set_config } from "../config"
+import { find_projects_in_workspaces } from "../path"
+import { FollowCursorService, sync_editor_with_renpy } from "../follow_cursor"
+import { get_executable, process_finished } from "../sh"
+import { get_sdk_path } from "../sdk"
+import { said_range } from "../dialogue"
+import { get_ipc_dir, get_ipc_path, WarpConnection } from "./connection"
 
 const logger = get_logger()
 
@@ -56,13 +57,23 @@ export interface ConsoleResultSocketMessage extends SocketMessage {
 	is_error: boolean
 }
 
+/** the first frame an rpe sends, describing itself */
+export interface HelloSocketMessage extends SocketMessage {
+	type: "hello"
+	pid: number
+	project_root: string
+	version: string
+	checksum?: string
+	nonce?: number
+}
+
 export type AnySocketMessage =
 	| CurrentLineSocketMessage
 	| ListLabelsSocketMessage
 	| CurrentLabelSocketMessage
 	| ConsoleResultSocketMessage
 
-/** connection details a client presents during the websocket handshake */
+/** connection details a client presents in its hello */
 export interface SocketClient {
 	pid: number
 	nonce?: number
@@ -105,17 +116,46 @@ export function get_message_handler(follow_cursor: FollowCursorService) {
 	}
 }
 
+/**
+ * refuses a directory another user could have planted, and closes one this
+ * user left open to others
+ */
+async function ensure_private_dir(dir: string): Promise<void> {
+	const stats = await lstat(dir)
+
+	if (!stats.isDirectory() || stats.uid !== userInfo().uid) {
+		throw new Error(`${dir} is not a directory owned by this user`)
+	}
+
+	if (stats.mode & 0o077) await chmod(dir, 0o700)
+}
+
+/** removes sockets left behind by windows that died without closing them */
+async function sweep_stale_sockets(dir: string): Promise<void> {
+	const names = await readdir(dir).catch(() => [])
+
+	await Promise.all(
+		names.map(async (name) => {
+			const pid = Number(path.basename(name, ".sock"))
+			if (!name.endsWith(".sock") || !Number.isInteger(pid)) return
+			if (pid === process.pid || !(await process_finished(pid))) return
+
+			logger.debug(`removing stale socket ${name}`)
+			await rm(path.join(dir, name), { force: true })
+		})
+	)
+}
+
 export class WarpSocketService {
 	private context: vscode.ExtensionContext
-	private socket_server?: WebSocketServer
+	private socket_server?: Server
+	private connections = new Set<WarpConnection>()
 	private message_handler: MessageHandler
 
 	private pm: ProcessManager
 	private status_bar: StatusBar
 
-	public readonly ports = Object.freeze([
-		40111, 40112, 40113, 40114, 40115, 40116, 40117, 40118, 40119, 40120
-	])
+	public readonly ipc_path = get_ipc_path()
 
 	public deny_processes = new Set<number>()
 	public allowed_processes = new Set<number>()
@@ -140,16 +180,32 @@ export class WarpSocketService {
 	public async start(): Promise<void> {
 		if (this.socket_server) return
 
-		const socket_server = new WebSocketServer({ noServer: true })
+		const socket_server = createServer((socket) => {
+			logger.debug("socket server received a connection")
+			this.handle_connection(new WarpConnection(socket))
+		})
 		this.socket_server = socket_server
-		const http_server = createServer()
-		const port = await this.get_socket_port()
+
+		// windows pipes live in their own namespace, so only unix has files to
+		// manage. the directory is private to this user
+		if (process.platform !== "win32") {
+			try {
+				const dir = get_ipc_dir()
+				await mkdir(dir, { recursive: true, mode: 0o700 })
+				await ensure_private_dir(dir)
+				await sweep_stale_sockets(dir)
+				await rm(this.ipc_path, { force: true })
+			} catch (error) {
+				this.socket_server = undefined
+				throw error
+			}
+		}
 
 		socket_server.on("close", () => {
 			logger.info("socket server closed")
 
 			this.socket_server = undefined
-			this.status_bar.notify(`$(server-process) Socket server :${port} closed`)
+			this.status_bar.notify(`$(server-process) Socket server closed`)
 
 			this.deny_processes.clear()
 			this.allowed_processes.clear()
@@ -160,51 +216,24 @@ export class WarpSocketService {
 				"renpyWarp.socketServerRunning",
 				false
 			)
-			http_server.close()
 		})
 
-		http_server.on("upgrade", (request, socket, head) => {
-			logger.debug(
-				`socket server ${port} received a connection request with headers ${JSON.stringify(
-					request.headers
-				)}`
-			)
-			socket.on("error", logger.error)
-
-			this.handle_handshake(request)
-				.then((client) => {
-					if (!client) {
-						socket.destroy()
-						return
-					}
-
-					socket_server.handleUpgrade(request, socket, head, (ws) => {
-						this.handle_socket_connection(ws, client)
-					})
-				})
-				.catch(logger.error)
-		})
-
-		function handle_error(error: unknown) {
+		socket_server.on("error", (error) => {
 			logger.error("socket server error:", error)
 
 			vscode.window
-				.showErrorMessage("Failed to start websockets server.", "Logs", "OK")
+				.showErrorMessage("Failed to start socket server.", "Logs", "OK")
 				.then((selection) => {
 					if (selection === "Logs") {
 						logger.show()
 					}
 				})
-			socket_server.close()
-		}
-		http_server.on("error", handle_error)
-		socket_server.on("wsClientError", handle_error)
+			this.close()
+		})
 
-		http_server.listen(port, undefined, undefined, () => {
-			logger.info(`socket server listening on :${port}`)
-			this.status_bar.notify(
-				`$(server-process) Socket server listening on :${port}`
-			)
+		socket_server.listen(this.ipc_path, () => {
+			logger.info(`socket server listening on ${this.ipc_path}`)
+			this.status_bar.notify(`$(server-process) Socket server listening`)
 			this.status_bar.update(() => ({
 				socket_server_status: "running"
 			}))
@@ -222,27 +251,67 @@ export class WarpSocketService {
 		this.allowed_processes.delete(pid)
 		this.deny_processes.add(pid)
 
-		this.pm.find_by_pid(pid)?.socket?.close(4001, "forgotten")
+		this.pm.find_by_pid(pid)?.socket?.close({ reconnect: false })
 	}
 
 	public close() {
 		if (this.socket_server) {
 			logger.info("stopping socket server")
 
-			// the server only emits "close" once every client has gone
-			for (const client of this.socket_server.clients) client.close()
+			// the server only emits "close" once every connection has gone
+			for (const connection of this.connections) connection.close()
 			this.socket_server.close()
 		}
 	}
 
-	private async get_socket_port(): Promise<number> {
-		const port = await get_port({ port: this.ports })
+	public dispose() {
+		this.close()
+	}
 
-		if (!this.ports.includes(port)) {
-			throw new Error("exhausted all available ports")
-		}
+	/** waits for a connection's hello, then admits or turns it away */
+	private handle_connection(connection: WarpConnection) {
+		this.connections.add(connection)
+		connection.on("close", () => this.connections.delete(connection))
+		connection.on("error", (error) => {
+			logger.error("socket connection error:", error)
+		})
 
-		return port
+		const timeout = setTimeout(() => {
+			logger.info("closing a connection that never said hello")
+			connection.close()
+		}, 5000)
+
+		connection.once("message", (message: SocketMessage) => {
+			clearTimeout(timeout)
+
+			if (message.type !== "hello") {
+				logger.info(`expected hello, got '${message.type}'`)
+				connection.close()
+				return
+			}
+
+			logger.debug("socket server received hello", JSON.stringify(message))
+
+			this.handle_handshake(message as HelloSocketMessage)
+				.then(async (client) => {
+					if (!client) {
+						connection.close()
+						return
+					}
+
+					// the rpe can hang up while a prompt waits on the user
+					if (!connection.open) return
+
+					this.handle_socket_connection(connection, client)
+					await connection.send({ type: "welcome" })
+				})
+				.catch((error) => {
+					logger.error("socket handshake failed:", error)
+
+					// the rpe blocks until it hears back, so it needs a hang up
+					connection.close()
+				})
+		})
 	}
 
 	/** the process this extension launched under `nonce`, if there is one */
@@ -253,7 +322,7 @@ export class WarpSocketService {
 	}
 
 	private handle_socket_connection(
-		ws: WebSocket,
+		connection: WarpConnection,
 		{ pid, nonce, project_root }: SocketClient
 	) {
 		const managed = this.get_managed_process(nonce)
@@ -265,48 +334,46 @@ export class WarpSocketService {
 		}
 
 		const rpp =
-			managed ?? this.handle_unmanaged_process({ pid, project_root, ws })
+			managed ??
+			this.handle_unmanaged_process({ pid, project_root, connection })
 
-		// a new process is constructed holding `ws` already, so this replaces a
-		// socket only where the process was reconnecting over an older one
-		if (rpp.socket !== ws) {
+		// a new process is constructed holding `connection` already, so this
+		// replaces a socket only where the process was reconnecting over an
+		// older one
+		if (rpp.socket !== connection) {
 			if (rpp.socket) {
 				logger.warn(`replacing existing socket for pid ${rpp.pid}`)
-				rpp.socket.close(4000, "connection replaced")
+				rpp.socket.close({ reconnect: false })
 			}
 
-			rpp.socket = ws
+			rpp.socket = connection
 		}
 
-		ws.on("message", async (data) => {
-			logger.debug(`websocket (${rpp.pid}) <`, data.toString())
-			const message = JSON.parse(data.toString())
+		connection.on("message", async (message: SocketMessage) => {
+			logger.debug(`socket (${rpp.pid}) <`, JSON.stringify(message))
 
 			rpp.emit("socketMessage", message)
 			await this.message_handler(rpp, message)
 		})
 
-		ws.on("close", () => {
-			logger.info(`websocket connection closed (pid ${rpp.pid})`)
-			rpp.socket = undefined
-		})
+		connection.on("close", () => {
+			logger.info(`socket connection closed (pid ${rpp.pid})`)
 
-		ws.on("error", (error) => {
-			logger.error(`websocket error (pid ${rpp.pid})`, error)
+			// a replaced connection closes after its successor moved in
+			if (rpp.socket === connection) rpp.socket = undefined
 		})
 	}
 
-	/** vets a connection request, resolving with the client if it may connect */
+	/** vets a hello, resolving with the client if it may connect */
 	private async handle_handshake(
-		req: IncomingMessage
+		hello: HelloSocketMessage
 	): Promise<SocketClient | undefined> {
-		const socket_version = req.headers["warp-version"]
-		const socket_checksum = req.headers["warp-checksum"]
-		const socket_nonce = req.headers["warp-nonce"]
-			? Number(req.headers["warp-nonce"])
-			: undefined
-		const socket_pid = Number(req.headers["pid"])
-		const socket_project_root = req.headers["warp-project-root"] as string
+		const socket_version = hello.version
+		const socket_checksum = hello.checksum
+		const socket_nonce =
+			hello.nonce === undefined ? undefined : Number(hello.nonce)
+		const socket_pid = Number(hello.pid)
+		const socket_project_root = String(hello.project_root)
 
 		const client: SocketClient = {
 			pid: socket_pid,
@@ -426,11 +493,11 @@ export class WarpSocketService {
 	private handle_unmanaged_process({
 		pid,
 		project_root,
-		ws
+		connection
 	}: {
 		pid: number
 		project_root: string
-		ws: WebSocket
+		connection: WarpConnection
 	}): AnyProcess {
 		logger.info(`socket server discovered unmanaged process ${pid}`)
 
@@ -444,7 +511,7 @@ export class WarpSocketService {
 
 		logger.info("creating new unmanaged process")
 
-		const rpp = new UnmanagedProcess({ pid, project_root, socket: ws })
+		const rpp = new UnmanagedProcess({ pid, project_root, socket: connection })
 
 		rpp.on("exit", () => {
 			logger.info(`external process ${pid} exited`)

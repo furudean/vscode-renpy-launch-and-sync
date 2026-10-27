@@ -1,6 +1,5 @@
 import * as vscode from "vscode"
 import child_process, { ChildProcess } from "node:child_process"
-import { WebSocket } from "ws"
 import { get_logger } from "../log"
 import { ProcessManager } from "./manager"
 import { EventEmitter } from "node:events"
@@ -13,6 +12,7 @@ import {
 import { process_finished } from "../sh"
 import split2 from "split2"
 import { is_system_label } from "../label"
+import { WarpConnection } from "../socket/connection"
 
 export const logger = get_logger()
 
@@ -21,14 +21,14 @@ const BACKLOG_LINES = 1000
 interface UnmanagedProcessOptions {
 	pid: number
 	project_root: string
-	socket?: WebSocket
+	socket?: WarpConnection
 	monitor?: boolean
 }
 
 export class UnmanagedProcess {
 	pid: number
 	project_root: string
-	socket?: WebSocket
+	socket?: WarpConnection
 	dead: boolean = false
 	labels: string[] | undefined = undefined
 	last_cursor?: CurrentLineSocketMessage = undefined
@@ -119,9 +119,7 @@ export class UnmanagedProcess {
 	}
 
 	get socket_ready(): boolean {
-		return (
-			this.socket !== undefined && this.socket.readyState === WebSocket.OPEN
-		)
+		return this.socket?.open ?? false
 	}
 
 	private wait_until(
@@ -185,7 +183,7 @@ export class UnmanagedProcess {
 		})
 	}
 
-	/** Send a message to the Ren'Py process via WebSocket */
+	/** Send a message to the Ren'Py process over its socket */
 	private async ipc(message: SocketMessage): Promise<void> {
 		if (this.dead) throw new Error(`process ${this.pid} is not running`)
 
@@ -194,23 +192,19 @@ export class UnmanagedProcess {
 			throw e
 		})
 
-		return new Promise((resolve, reject) => {
-			const serialized = JSON.stringify(message)
+		let timeout: NodeJS.Timeout | undefined
 
-			const timeout = setTimeout(() => {
-				reject(new Error("ipc timed out"))
-			}, 1000)
-			this.socket!.send(serialized, (err) => {
-				logger.debug("websocket >", serialized)
-
-				clearTimeout(timeout)
-				if (err) {
-					reject(err)
-				} else {
-					resolve()
-				}
-			})
-		})
+		try {
+			await Promise.race([
+				this.socket!.send(message),
+				new Promise((_, reject) => {
+					timeout = setTimeout(() => reject(new Error("ipc timed out")), 1000)
+				})
+			])
+			logger.debug("socket >", JSON.stringify(message))
+		} finally {
+			clearTimeout(timeout)
+		}
 	}
 
 	/**

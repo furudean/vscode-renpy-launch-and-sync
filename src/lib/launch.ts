@@ -190,7 +190,8 @@ export async function launch_renpy({
 		RENPY_VSCODE: await get_editor_cli_path(),
 		...process.env,
 		...extra_environment,
-		WARP_WS_NONCE: nonce.toString(),
+		WARP_IPC_NONCE: nonce.toString(),
+		WARP_IPC_PATH: wss.ipc_path,
 		// see: https://www.renpy.org/doc/html/editor.html
 		RENPY_EDIT_PY: await get_editor_path(sdk_path)
 	}

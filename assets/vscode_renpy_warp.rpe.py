@@ -1,9 +1,9 @@
 # This file managed by the Ren'Py Launch and Sync Visual Studio Code extension.
 #
 # This script provides a mechanism for your Ren'Py game to connect to VS Code
-# via a websocket server. It is automatically excluded from builds of your game.
-# You can delete this file if you do not want to use the features provided by
-# the extension.
+# over a socket. It is automatically excluded from builds of your game. You can
+# delete this file if you do not want to use the features provided by the
+# extension.
 #
 # This file should not be checked into source control. You can add it to your
 # `.gitignore` file by adding the following line:
@@ -13,17 +13,22 @@
 # For more information, see https://github.com/furudean/vscode-renpy-warp
 #
 
-import renpy  # type: ignore
-from time import sleep
+import functools
+import glob
+import json
+import logging
+import os
+import re
+import socket
+import stat
+import sys
 import textwrap
 import threading
-import json
-import functools
-import re
-import os
 import traceback
 from pathlib import Path
-import logging
+from time import sleep
+
+import renpy  # type: ignore
 
 logging.basicConfig()
 
@@ -41,6 +46,291 @@ class RenpyWarpQuitAction(renpy.ui.Action):
 
 
 original_quit_action = renpy.config.quit_action
+
+IM_WINDOWS = os.name == "nt"
+DELIMITER = b"\0"
+PIPE_NAMESPACE = "\\\\.\\pipe\\"
+PIPE_PREFIX = "renpy-warp-"
+RETRY_SECONDS = 3
+
+
+class ConnectionClosed(Exception):
+    def __init__(self, reconnect=True):
+        super().__init__("connection closed")
+        self.reconnect = reconnect
+
+
+class Connection:
+    def __init__(self):
+        # character callbacks send from the main thread while the service
+        # thread sends too, and frames must not interleave
+        self._write_lock = threading.Lock()
+        self._buffer = b""
+        self.closed = False
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+    def send(self, message):
+        frame = json.dumps(message).encode("utf-8") + DELIMITER
+
+        with self._write_lock:
+            if self.closed:
+                raise ConnectionClosed()
+
+            try:
+                self.write(frame)
+            except OSError as e:
+                raise ConnectionClosed() from e
+
+    def receive(self):
+        while DELIMITER not in self._buffer:
+            try:
+                chunk = self.read_chunk()
+            except OSError as e:
+                raise ConnectionClosed() from e
+
+            if not chunk:
+                raise ConnectionClosed()
+
+            self._buffer += chunk
+
+        frame, self._buffer = self._buffer.split(DELIMITER, 1)
+        message = json.loads(frame.decode("utf-8"))
+
+        if message.get("type") == "close":
+            raise ConnectionClosed(reconnect=message.get("reconnect", True))
+
+        return message
+
+    def close(self):
+        if self.closed:
+            return
+
+        self.closed = True
+        self.hang_up()
+
+
+class UnixConnection(Connection):
+    def __init__(self, path):
+        super().__init__()
+        self._socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+
+        try:
+            self._socket.connect(path)
+        except OSError:
+            self._socket.close()
+            raise
+
+    def read_chunk(self):
+        return self._socket.recv(65536)
+
+    def write(self, data):
+        self._socket.sendall(data)
+
+    def hang_up(self):
+        # shutdown wakes a recv blocked on another thread, close alone may not
+        try:
+            self._socket.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+        self._socket.close()
+
+
+class NamedPipeConnection(Connection):
+    def __init__(self, path):
+        import _winapi  # type: ignore
+
+        super().__init__()
+        self._winapi = _winapi
+        self._pending_read = None
+
+        try:
+            self._handle = self._open(path)
+        except OSError as e:
+            # every pipe instance has a client, so wait for one to free up
+            if e.winerror != _winapi.ERROR_PIPE_BUSY:
+                raise
+
+            _winapi.WaitNamedPipe(path, 1000)
+            self._handle = self._open(path)
+
+        # pipe names are machine-wide, so another user could squat on one
+        if not self._owned_by_user():
+            _winapi.CloseHandle(self._handle)
+            raise PermissionError(f"{path} is owned by another user")
+
+    def _open(self, path):
+        # limits the server to identifying this client, so it can't act as
+        # this user
+        SECURITY_SQOS_PRESENT = 0x00100000
+        SECURITY_IDENTIFICATION = 0x00010000
+
+        return self._winapi.CreateFile(
+            path,
+            self._winapi.GENERIC_READ | self._winapi.GENERIC_WRITE,
+            0,
+            self._winapi.NULL,
+            self._winapi.OPEN_EXISTING,
+            self._winapi.FILE_FLAG_OVERLAPPED
+            | SECURITY_SQOS_PRESENT
+            | SECURITY_IDENTIFICATION,
+            self._winapi.NULL,
+        )
+
+    def _owned_by_this_user(self):
+        """
+        whether the pipe has the same owner as this process, the check .NET
+        makes for PipeOptions.CurrentUserOnly. the owner reflects elevation, so
+        an elevated server and a normal client don't match
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        SE_KERNEL_OBJECT = 6
+        OWNER_SECURITY_INFORMATION = 0x1
+
+        kernel32 = ctypes.WinDLL("kernel32")
+        advapi32 = ctypes.WinDLL("advapi32")
+
+        def owner_sid(handle):
+            owner = ctypes.c_void_p()
+            descriptor = ctypes.c_void_p()
+
+            if advapi32.GetSecurityInfo(
+                    wintypes.HANDLE(handle), SE_KERNEL_OBJECT,
+                    OWNER_SECURITY_INFORMATION, ctypes.byref(owner),
+                    None, None, None, ctypes.byref(descriptor)):
+                return None
+
+            try:
+                return ctypes.string_at(owner.value, advapi32.GetLengthSid(owner))
+            finally:
+                kernel32.LocalFree(descriptor)
+
+        theirs = owner_sid(self._handle)
+
+        # -1 is the pseudo-handle for this process
+        return theirs is not None and theirs == owner_sid(-1)
+
+    def read_chunk(self):
+        ov, _ = self._winapi.ReadFile(self._handle, 65536, overlapped=True)
+        self._pending_read = ov
+
+        try:
+            _, err = ov.GetOverlappedResult(True)
+        finally:
+            self._pending_read = None
+
+        # a broken pipe or a cancelled read
+        if err != 0:
+            return b""
+
+        return bytes(ov.getbuffer())
+
+    def write(self, data):
+        ov, _ = self._winapi.WriteFile(self._handle, data, overlapped=True)
+        written, err = ov.GetOverlappedResult(True)
+
+        if err != 0 or written != len(data):
+            raise OSError(f"pipe write failed ({err})")
+
+    def hang_up(self):
+        # wake the service thread
+        read = self._pending_read
+
+        if read is not None:
+            try:
+                read.cancel()
+            except OSError:
+                pass
+
+        self._winapi.CloseHandle(self._handle)
+
+
+def connect(path):
+    if IM_WINDOWS:
+        return NamedPipeConnection(path)
+
+    return UnixConnection(path)
+
+
+def ipc_dirs():
+
+    uid = os.getuid()
+    dirs = []
+
+    if sys.platform == "darwin":
+        import pwd
+
+        home = pwd.getpwuid(uid).pw_dir
+        dirs.append(os.path.join(
+            home, "Library", "Application Support", "renpy-warp"))
+
+    for runtime_dir in (os.environ.get("XDG_RUNTIME_DIR"), f"/run/user/{uid}"):
+        if not runtime_dir:
+            continue
+
+        dirs.append(os.path.join(runtime_dir, "renpy-warp"))
+
+        pattern = os.path.join(
+            glob.escape(runtime_dir), "app", "*", "renpy-warp")
+        dirs.extend(sorted(glob.glob(pattern)))
+
+    dirs.append(f"/tmp/renpy-warp-{uid}")
+
+    return list(dict.fromkeys(dirs))
+
+
+def is_private(directory):
+    try:
+        stats = os.lstat(directory)
+    except OSError:
+        return False
+
+    return (
+        stat.S_ISDIR(stats.st_mode)
+        and stats.st_uid == os.getuid()
+        and not stats.st_mode & 0o077
+    )
+
+
+def listdir(directory):
+    try:
+        return sorted(os.listdir(directory))
+    except OSError:
+        return []
+
+
+def list_endpoints():
+    endpoints = []
+
+    launched_by = os.getenv("WARP_IPC_PATH")
+    if launched_by:
+        endpoints.append(launched_by)
+
+    if IM_WINDOWS:
+        found = [
+            PIPE_NAMESPACE + name
+            for name in listdir(PIPE_NAMESPACE)
+            if name.startswith(PIPE_PREFIX)
+        ]
+    else:
+        found = [
+            os.path.join(directory, name)
+            for directory in ipc_dirs()
+            if is_private(directory)
+            for name in listdir(directory)
+            if name.endswith(".sock")
+        ]
+
+    endpoints.extend(path for path in found if path not in endpoints)
+
+    return endpoints
 
 
 def get_meta():
@@ -235,7 +525,7 @@ def console_jump(rest):
     return "", False
 
 
-def console_send(nonce, code, websocket):
+def console_send(nonce, code, connection):
     try:
         import store._console as _console_store  # type: ignore
 
@@ -263,7 +553,7 @@ def console_send(nonce, code, websocket):
             "nonce": nonce,
             "text": "",
             "is_error": False,
-        }, websocket)
+        }, connection)
         raise
     except Exception:  # noqa: BLE001
         text, is_error = traceback.format_exc(), True
@@ -273,7 +563,7 @@ def console_send(nonce, code, websocket):
         "nonce": nonce,
         "text": text,
         "is_error": is_error,
-    }, websocket)
+    }, connection)
 
 
 _resume_context = None
@@ -289,18 +579,18 @@ def begin_next_checkpoint():
     renpy.exports.end_interaction(True)
 
 
-def socket_send(message, websocket):
+def socket_send(message, connection):
     """sends a message to the socket server"""
-    stringified = json.dumps(message)
-    websocket.send(stringified)
-    logger.debug(f"sent message: {stringified}")
+    connection.send(message)
+    logger.debug(f"sent message: {message}")
 
 
-def socket_listener(websocket):
+def socket_listener(connection):
     """listens for messages from the socket server"""
-    for message in websocket:
-        logger.debug(f"receive message: {message}")
-        payload = json.loads(message)
+
+    while True:
+        payload = connection.receive()
+        logger.debug(f"receive message: {payload}")
 
         if payload["type"] == "warp_to_line":
             file = payload["file"]
@@ -330,7 +620,7 @@ def socket_listener(websocket):
 
         elif payload["type"] == "console":
             invoke(functools.partial(
-                console_send, payload.get("nonce"), payload["code"], websocket))
+                console_send, payload.get("nonce"), payload["code"], connection))
 
         elif payload["type"] == "jump_to_label":
             label = str(payload["label"])
@@ -348,11 +638,10 @@ def socket_listener(websocket):
             logger.warning(f"unhandled message type '{payload['type']}'")
 
 
-def socket_producer(websocket):
+def socket_producer(connection):
     """produces messages to the socket server"""
-    from websockets.exceptions import ConnectionClosed  # type: ignore
 
-    send = functools.partial(socket_send, websocket=websocket)
+    send = functools.partial(socket_send, connection=connection)
 
     # report current line to warp server
     def fn(event, interact=True, **kwargs):
@@ -441,108 +730,102 @@ def socket_producer(websocket):
     send({"type": "list_labels", "labels": list(renpy.exports.get_all_labels())})
 
 
-def socket_service(port, version, checksum):
+def socket_service(path, version, checksum):
     """connects to the socket server. returns True if the connection has completed its lifecycle"""
-    # websockets module is bundled with renpy on versions >=8.2.0
-    from websockets.sync.client import connect  # type: ignore
-    from websockets.exceptions import (  # type: ignore
-        WebSocketException,
-        ConnectionClosedOK,
-        ConnectionClosedError
-    )
 
-    logger.debug(f"try port {port}")
+    logger.debug(f"try {path}")
 
     try:
-        headers = {
-            "pid": str(os.getpid()),
-            "warp-project-root": Path(renpy.config.gamedir).parent.resolve().as_posix(),
-            "warp-version": version,
-            "warp-checksum": checksum,
+        connection = connect(path)
+    except OSError as e:
+        logger.debug(
+            f"{e.__class__.__name__}: could not connect to {path}")
+        return False
+
+    with connection:
+        hello = {
+            "type": "hello",
+            "pid": os.getpid(),
+            "project_root": Path(renpy.config.gamedir).parent.resolve().as_posix(),
+            "version": version,
+            "checksum": checksum,
         }
 
-        if os.getenv("WARP_WS_NONCE"):
-            headers["warp-nonce"] = os.getenv("WARP_WS_NONCE")
+        if os.getenv("WARP_IPC_NONCE"):
+            hello["nonce"] = int(os.getenv("WARP_IPC_NONCE"))
 
-        with connect(
-            f"ws://localhost:{port}",
-            additional_headers=headers,
-            open_timeout=None,
-            close_timeout=5,
-        ) as websocket:
-            quitting = False
+        try:
+            connection.send(hello)
 
-            def renpy_warp_quit_callback():
-                nonlocal quitting
-                quitting = True
-                logger.info(f"closing websocket connection :{port}")
-                websocket.close(4000, 'renpy quit')
+            # the server may ask the user first, so wait as long as it takes
+            reply = connection.receive()
+        except ConnectionClosed as e:
+            logger.debug(f"{path} turned the connection away")
+            return not e.reconnect
 
-            renpy.config.quit_callbacks.append(renpy_warp_quit_callback)
-            renpy.config.quit_action = RenpyWarpQuitAction()
+        if reply.get("type") != "welcome":
+            logger.warning(f"expected welcome, got '{reply.get('type')}'")
+            return False
 
-            logger.info(f"connected to renpy warp socket server on :{port}")
-            py_exec("renpy.notify(\"Connected to Ren'Py Launch and Sync\")")
+        quitting = False
 
-            socket_producer(websocket)
-            socket_listener(websocket)  # this blocks until socket is closed
+        def renpy_warp_quit_callback():
+            nonlocal quitting
+            quitting = True
+            logger.info(f"closing socket connection {path}")
+            connection.close()
 
+        renpy.config.quit_callbacks.append(renpy_warp_quit_callback)
+        renpy.config.quit_action = RenpyWarpQuitAction()
+
+        logger.info(f"connected to renpy warp socket server on {path}")
+        py_exec("renpy.notify(\"Connected to Ren'Py Launch and Sync\")")
+
+        stop = False
+
+        try:
+            socket_producer(connection)
+            socket_listener(connection)
+        except ConnectionClosed as e:
+            stop = quitting or not e.reconnect
+        finally:
             renpy.config.quit_callbacks.remove(renpy_warp_quit_callback)
             renpy.config.quit_action = original_quit_action
-            logger.info(f"socket service on :{port} exited")
 
-            if not quitting:
-                py_exec(
-                    "renpy.notify(\"Disconnected from  Ren'Py Launch and Sync\")")
+        if stop and not quitting:
+            logger.info("connection replaced, service exiting")
+        else:
+            logger.info(f"socket service on {path} exited")
 
-    except ConnectionClosedOK:
-        logger.info(f"socket service on :{port} was terminated by server")
-        pass
+        if not quitting:
+            py_exec(
+                "renpy.notify(\"Disconnected from Ren'Py Launch and Sync\")")
 
-    except ConnectionClosedError:
-        logger.info("connection replaced, service exiting")
-        return True
-
-    except WebSocketException as e:
-        logger.exception("unexpected websocket error", exc_info=e)
-
-    except (ConnectionError, TimeoutError) as e:
-        logger.debug(
-            f"{e.__class__.__name__}: could not establish connection to socket server")
-
-    return False
+        return stop
 
 
-def try_socket_ports_forever():
+def try_endpoints_forever():
     version, checksum = get_meta()
-    service_closed = False
 
-    while service_closed is False:
-        for port in range(40111, 40121):
-            service_closed = socket_service(
-                port=port, version=version, checksum=checksum)
-
-            if service_closed:
-                break
-
-        if service_closed:
-            break
+    while True:
+        for path in list_endpoints():
+            if socket_service(path=path, version=version, checksum=checksum):
+                logger.info("service closed")
+                return
 
         logger.debug(
-            "exhausted all ports, waiting 3 seconds before retrying")
-        sleep(3)
-
-    logger.info("service closed")
+            f"tried every server. sleeping {RETRY_SECONDS} seconds before retrying")
+        sleep(RETRY_SECONDS)
 
 
 def start_renpy_warp_service():
     if renpy.config.developer:
         renpy_warp_thread = threading.Thread(
-            target=try_socket_ports_forever, daemon=True)
+            target=try_endpoints_forever, daemon=True)
         renpy_warp_thread.start()
 
         logger.info(
-            "service thread started. periodically scanning ports for warp server")
+            "service thread started. periodically looking for warp server")
 
 
 def declassify():
