@@ -35,7 +35,7 @@ logging.basicConfig()
 logger = logging.getLogger("renpy_warp_service")
 
 try:
-    logger.setLevel(level=os.getenv('WARP_LOGLEVEL', logging.INFO))
+    logger.setLevel(level=os.getenv("WARP_LOGLEVEL", logging.INFO))
 except ValueError:
     logger.setLevel(level=logging.INFO)
 
@@ -170,20 +170,28 @@ class NamedPipeConnection(Connection):
             raise PermissionError(f"{path} is owned by another user")
 
     def _open(self, path):
-        # limits the server to identifying this client, so it can't act as
-        # this user
+        # the server can identify this client but not act as this user
         SECURITY_SQOS_PRESENT = 0x00100000
-        SECURITY_IDENTIFICATION = 0x00010000
+        # SecurityIdentification << 16
+        # https://learn.microsoft.com/en-us/windows/win32/api/winnt/ne-winnt-security_impersonation_level
+        SECURITY_IDENTIFICATION_VALUE = 1 << 16
 
+        flags_and_attributes = (
+            # lets the listener block on a read while the producer writes, and
+            # lets hang_up cancel that read
+            self._winapi.FILE_FLAG_OVERLAPPED
+            | SECURITY_SQOS_PRESENT
+            | SECURITY_IDENTIFICATION_VALUE
+        )
+
+        # https://learn.microsoft.com/en-us/windows/win32/api/fileapi/nf-fileapi-createfilea
         return self._winapi.CreateFile(
             path,
             self._winapi.GENERIC_READ | self._winapi.GENERIC_WRITE,
             0,
             self._winapi.NULL,
             self._winapi.OPEN_EXISTING,
-            self._winapi.FILE_FLAG_OVERLAPPED
-            | SECURITY_SQOS_PRESENT
-            | SECURITY_IDENTIFICATION,
+            flags_and_attributes,
             self._winapi.NULL,
         )
 
@@ -207,9 +215,15 @@ class NamedPipeConnection(Connection):
             descriptor = ctypes.c_void_p()
 
             if advapi32.GetSecurityInfo(
-                    wintypes.HANDLE(handle), SE_KERNEL_OBJECT,
-                    OWNER_SECURITY_INFORMATION, ctypes.byref(owner),
-                    None, None, None, ctypes.byref(descriptor)):
+                wintypes.HANDLE(handle),
+                SE_KERNEL_OBJECT,
+                OWNER_SECURITY_INFORMATION,
+                ctypes.byref(owner),
+                None,
+                None,
+                None,
+                ctypes.byref(descriptor),
+            ):
                 return None
 
             try:
@@ -272,8 +286,7 @@ def ipc_dirs():
         import pwd
 
         home = pwd.getpwuid(uid).pw_dir
-        dirs.append(os.path.join(
-            home, "Library", "Application Support", "renpy-warp"))
+        dirs.append(os.path.join(home, "Library", "Application Support", "renpy-warp"))
 
     for runtime_dir in (os.environ.get("XDG_RUNTIME_DIR"), f"/run/user/{uid}"):
         if not runtime_dir:
@@ -283,8 +296,7 @@ def ipc_dirs():
 
         # a flatpak or snap editor listens inside its own runtime dir
         for sandbox in (("app", "*"), ("snap.*",)):
-            pattern = os.path.join(
-                glob.escape(runtime_dir), *sandbox, "renpy-warp")
+            pattern = os.path.join(glob.escape(runtime_dir), *sandbox, "renpy-warp")
             dirs.extend(sorted(glob.glob(pattern)))
 
     dirs.append(f"/tmp/renpy-warp-{uid}")
@@ -341,10 +353,10 @@ def list_endpoints():
 
 def get_meta():
     RPE_FILE_PATTERN = re.compile(
-        r"(?:vscode_)?renpy_warp_(?P<version>\d+\.\d+\.\d+)(?:_(?P<checksum>[a-z0-9]+))?\.rpe(?:\.py)?")
+        r"(?:vscode_)?renpy_warp_(?P<version>\d+\.\d+\.\d+)(?:_(?P<checksum>[a-z0-9]+))?\.rpe(?:\.py)?"
+    )
 
-    file = Path(__file__) if __file__.endswith(
-        '.rpe.py') else Path(__file__).parent
+    file = Path(__file__) if __file__.endswith(".rpe.py") else Path(__file__).parent
 
     filename = os.path.basename(file)
     match = RPE_FILE_PATTERN.match(filename)
@@ -352,7 +364,8 @@ def get_meta():
     if not match:
         raise Exception(
             f"could not parse filename '{filename}'"
-            f" with pattern '{RPE_FILE_PATTERN.pattern}'")
+            f" with pattern '{RPE_FILE_PATTERN.pattern}'"
+        )
 
     d = match.groupdict()
 
@@ -365,8 +378,7 @@ def script_dialogue():
     interpolation, translation and text filters are applied
     """
     try:
-        node = renpy.game.script.namemap.get(
-            renpy.game.context().current, None)
+        node = renpy.game.script.namemap.get(renpy.game.context().current, None)
     except Exception:
         logger.debug("could not look up current node", exc_info=True)
         return None
@@ -394,16 +406,16 @@ def resync(script_text, displayed, i, j):
     how far to step through one text or the other for the two to line up again,
     as a (script, displayed) pair, or None if they don't inside the window
     """
-    script_anchor = script_text[i:i + RESYNC_ANCHOR]
-    displayed_anchor = displayed[j:j + RESYNC_ANCHOR]
+    script_anchor = script_text[i : i + RESYNC_ANCHOR]
+    displayed_anchor = displayed[j : j + RESYNC_ANCHOR]
 
     for k in range(1, RESYNC_WINDOW):
         # text the filter added
-        if displayed[j + k:j + k + RESYNC_ANCHOR] == script_anchor:
+        if displayed[j + k : j + k + RESYNC_ANCHOR] == script_anchor:
             return 0, k
 
         # text the filter took out
-        if script_text[i + k:i + k + RESYNC_ANCHOR] == displayed_anchor:
+        if script_text[i + k : i + k + RESYNC_ANCHOR] == displayed_anchor:
             return k, 0
 
     return None
@@ -438,15 +450,15 @@ def dialogue_offset(script_text, displayed, end):
 
     while j < end and i < len(script_text):
         # `{{` escapes a brace, so it is a character of text rather than a tag
-        if script_text[i:i + 2] == displayed[j:j + 2] == "{{":
+        if script_text[i : i + 2] == displayed[j : j + 2] == "{{":
             i += 2
             j += 2
             continue
 
         # tags line up as whole units rather than character by character,
         # since the script and the filter each write their own
-        script_tag = script_text[i:i + tag_length(script_text, i)]
-        displayed_tag = displayed[j:j + tag_length(displayed, j)]
+        script_tag = script_text[i : i + tag_length(script_text, i)]
+        displayed_tag = displayed[j : j + tag_length(displayed, j)]
 
         # the same tag on both sides, so step over it together
         if script_tag and script_tag == displayed_tag:
@@ -545,31 +557,39 @@ def console_send(nonce, code, connection):
             if command_word == "jump":
                 text, is_error = console_jump(rest)
             elif command_word == "exit":
-                text, is_error = "There's no interactive console session here to exit.", False
+                text, is_error = (
+                    "There's no interactive console session here to exit.",
+                    False,
+                )
             else:
                 console.run([code])
                 he = console.history[-1]
-                text, is_error = he.result or "", bool(
-                    getattr(he, "is_error", False))
+                text, is_error = he.result or "", bool(getattr(he, "is_error", False))
 
             renpy.exports.restart_interaction()
     except renpy.game.CONTROL_EXCEPTIONS:
-        socket_send({
-            "type": "console_result",
-            "nonce": nonce,
-            "text": "",
-            "is_error": False,
-        }, connection)
+        socket_send(
+            {
+                "type": "console_result",
+                "nonce": nonce,
+                "text": "",
+                "is_error": False,
+            },
+            connection,
+        )
         raise
     except Exception:  # noqa: BLE001
         text, is_error = traceback.format_exc(), True
 
-    socket_send({
-        "type": "console_result",
-        "nonce": nonce,
-        "text": text,
-        "is_error": is_error,
-    }, connection)
+    socket_send(
+        {
+            "type": "console_result",
+            "nonce": nonce,
+            "text": text,
+            "is_error": is_error,
+        },
+        connection,
+    )
 
 
 _resume_context = None
@@ -619,8 +639,11 @@ def handle_message(payload, connection):
         invoke(begin_next_checkpoint)
 
     elif payload["type"] == "console":
-        invoke(functools.partial(
-            console_send, payload.get("nonce"), payload["code"], connection))
+        invoke(
+            functools.partial(
+                console_send, payload.get("nonce"), payload["code"], connection
+            )
+        )
 
     elif payload["type"] == "jump_to_label":
         label = str(payload["label"])
@@ -677,14 +700,13 @@ def socket_producer(connection):
             if renpy.game.context().current == _resume_context:
                 # auto-advance through {w} or {p} so a step lands on the next
                 # statement, not mid-line
-                renpy.exports.invoke_in_main_thread(
-                    renpy.exports.end_interaction, True)
+                renpy.exports.invoke_in_main_thread(renpy.exports.end_interaction, True)
                 return
 
             _resume_context = None
 
         filename, line = renpy.exports.get_filename_line()
-        relative_filename = Path(filename).relative_to('game')
+        relative_filename = Path(filename).relative_to("game")
         filename_abs = Path(renpy.config.gamedir, relative_filename)
 
         message = {
@@ -754,8 +776,7 @@ def socket_service(path, version, checksum):
     try:
         connection = connect(path)
     except OSError as e:
-        logger.debug(
-            f"{e.__class__.__name__}: could not connect to {path}")
+        logger.debug(f"{e.__class__.__name__}: could not connect to {path}")
         return False
 
     with connection:
@@ -795,7 +816,7 @@ def socket_service(path, version, checksum):
         renpy.config.quit_action = RenpyWarpQuitAction()
 
         logger.info(f"connected to renpy warp socket server on {path}")
-        py_exec("renpy.notify(\"Connected to Ren'Py Launch and Sync\")")
+        py_exec('renpy.notify("Connected to Ren\'Py Launch and Sync")')
 
         stop = False
 
@@ -814,8 +835,7 @@ def socket_service(path, version, checksum):
             logger.info(f"socket service on {path} exited")
 
         if not quitting:
-            py_exec(
-                "renpy.notify(\"Disconnected from Ren'Py Launch and Sync\")")
+            py_exec('renpy.notify("Disconnected from Ren\'Py Launch and Sync")')
 
         return stop
 
@@ -826,8 +846,7 @@ def try_endpoints_forever():
     while True:
         for path in list_endpoints():
             try:
-                stop = socket_service(
-                    path=path, version=version, checksum=checksum)
+                stop = socket_service(path=path, version=version, checksum=checksum)
 
             except Exception:
                 logger.exception(f"socket service on {path} failed")
@@ -838,18 +857,17 @@ def try_endpoints_forever():
                 return
 
         logger.debug(
-            f"tried every server. sleeping {RETRY_SECONDS} seconds before retrying")
+            f"tried every server. sleeping {RETRY_SECONDS} seconds before retrying"
+        )
         sleep(RETRY_SECONDS)
 
 
 def start_renpy_warp_service():
     if renpy.config.developer:
-        renpy_warp_thread = threading.Thread(
-            target=try_endpoints_forever, daemon=True)
+        renpy_warp_thread = threading.Thread(target=try_endpoints_forever, daemon=True)
         renpy_warp_thread.start()
 
-        logger.info(
-            "service thread started. periodically looking for warp server")
+        logger.info("service thread started. periodically looking for warp server")
 
 
 renpy.config.display_start_callbacks.append(start_renpy_warp_service)

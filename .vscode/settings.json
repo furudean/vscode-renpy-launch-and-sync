@@ -16,7 +16,7 @@
 		".vscode-test": true
 	},
 	"[python]": {
-		"editor.defaultFormatter": "ms-python.autopep8",
+		"editor.defaultFormatter": "charliermarsh.ruff",
 		"editor.formatOnSave": true
 	}
 }
