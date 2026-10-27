@@ -182,7 +182,7 @@ class NamedPipeConnection(Connection):
             self._winapi.NULL,
         )
 
-    def _owned_by_this_user(self):
+    def _owned_by_user(self):
         """
         whether the pipe has the same owner as this process, the check .NET
         makes for PipeOptions.CurrentUserOnly. the owner reflects elevation, so
