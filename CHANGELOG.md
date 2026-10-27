@@ -38,6 +38,7 @@ All notable changes to this project will be documented in this file.
 - Escape values sent by the extension before Ren'Py extensions use them
 - Removed the settings migration for `renpyWarp.renpyExtensionsEnabled` from
   v1.5.0 and older
+- Paths on Windows are no longer shortened to `~`
 - The extension is now published as a single package for all platforms
 - _Open Ren'Py to current line_ no longer shows as an icon button in the
   editor's top-right toolbar. It's still available in other contexts.

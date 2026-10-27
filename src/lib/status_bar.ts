@@ -250,12 +250,13 @@ export class StatusBar {
 
 		switch (sdk.kind) {
 			case "installed": {
-				const location = tildify(sdk.path)
+				const location =
+					process.platform === "win32" ? sdk.path : tildify(sdk.path)
 
 				// the extension's own downloads go by version alone
-				this.sdk_bar.text = sdk.path.includes(
-					"/globalStorage/paisleysoftworks.renpywarp/"
-				)
+				this.sdk_bar.text = path
+					.toUnix(sdk.path)
+					.includes("/globalStorage/paisleysoftworks.renpywarp/")
 					? `$(warp-renpy) ${sdk.version.display}`
 					: `$(warp-renpy) ${location} (${sdk.version.display})`
 				this.sdk_bar.tooltip = with_source(

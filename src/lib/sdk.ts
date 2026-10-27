@@ -70,7 +70,9 @@ async function write_version_selection_for_path(
 	const resolved = resolve_path(sdk_path)
 	const value = downloaded.some((p) => resolve_path(p) === resolved)
 		? basename(sdk_path)
-		: tildify(sdk_path)
+		: process.platform === "win32"
+			? sdk_path
+			: tildify(sdk_path)
 
 	const write_root = await resolve_version_write_root(project_root)
 	if (!write_root) return
@@ -238,7 +240,7 @@ export async function resolve_sdk_reference(
 
 	if (sdk_path && !(await path_is_sdk(sdk_path))) {
 		vscode.window.showErrorMessage(
-			`'sdk' points at ${tildify(sdk_path)}, which is not a Ren'Py SDK`,
+			`'sdk' points at ${process.platform === "win32" ? sdk_path : tildify(sdk_path)}, which is not a Ren'Py SDK`,
 			"OK"
 		)
 		return undefined
@@ -349,7 +351,10 @@ export async function prompt_sdk_quick_pick(
 			(p) => resolve_path(p) === resolve_path(current_sdk_path)
 		)
 	) {
-		current_custom_label = tildify(current_sdk_path)
+		current_custom_label =
+			process.platform === "win32"
+				? current_sdk_path
+				: tildify(current_sdk_path)
 		const executable = await get_executable(current_sdk_path)
 		const version = executable && (await get_version(executable)).semver
 		if (version) current_custom_label += ` (${version})`
