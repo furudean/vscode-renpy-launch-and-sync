@@ -101,6 +101,16 @@ export class WarpConnection extends EventEmitter {
 					continue
 				}
 
+				// listeners read fields off every message
+				if (
+					typeof message !== "object" ||
+					message === null ||
+					Array.isArray(message)
+				) {
+					this.emit("error", new Error(`expected an object, got ${frame}`))
+					continue
+				}
+
 				this.emit("message", message)
 			}
 		})

@@ -251,6 +251,31 @@ describe("WarpConnection", () => {
 		}
 	})
 
+	test("reports a frame that isn't a json object as an error", async () => {
+		const [connection, client, done] = await pair()
+
+		try {
+			const received: unknown[] = []
+			const errors: Error[] = []
+			connection.on("error", (error) => errors.push(error))
+
+			const message = new Promise<void>((resolve) => {
+				connection.on("message", (message) => {
+					received.push(message)
+					resolve()
+				})
+			})
+
+			client.write('null\0[1]\0"a"\0not json\0{"type":"a"}\0')
+			await message
+
+			assert.deepEqual(received, [{ type: "a" }])
+			assert.equal(errors.length, 4)
+		} finally {
+			done()
+		}
+	})
+
 	test("sends framed json", async () => {
 		const [connection, client, done] = await pair()
 
