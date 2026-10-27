@@ -102,10 +102,11 @@ describe(
 
 		before(async () => {
 			runtime_dir = await mkdtemp(path.join(tmpdir(), "rw-runtime-"))
-			await mkdir(
-				path.join(runtime_dir, "app/com.visualstudio.code/renpy-warp"),
-				{ recursive: true }
-			)
+			for (const sandbox of ["app/com.visualstudio.code", "snap.code"]) {
+				await mkdir(path.join(runtime_dir, sandbox, "renpy-warp"), {
+					recursive: true
+				})
+			}
 		})
 
 		after(async () => {
@@ -139,6 +140,21 @@ describe(
 				assert.ok(rpe_ipc_dirs().includes(get_ipc_dir()))
 			})
 		}
+
+		// snap gives the editor its own runtime dir, which a game started
+		// outside the snap doesn't share
+		test(
+			"searches where a snap server listens from outside the snap",
+			{ skip: !is_linux },
+			() => {
+				set_env({ XDG_RUNTIME_DIR: path.join(runtime_dir, "snap.code") })
+				const server_dir = get_ipc_dir()
+
+				set_env({ XDG_RUNTIME_DIR: runtime_dir })
+
+				assert.ok(rpe_ipc_dirs().includes(server_dir))
+			}
+		)
 	}
 )
 

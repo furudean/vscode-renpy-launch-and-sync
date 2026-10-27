@@ -62,9 +62,9 @@ class ConnectionClosed(Exception):
 
 class Connection:
     def __init__(self):
-        # character callbacks send from the main thread while the service
-        # thread sends too, and frames must not interleave
         self._write_lock = threading.Lock()
+        self._close_lock = threading.Lock()
+
         self._buffer = b""
         self.closed = False
 
@@ -110,10 +110,12 @@ class Connection:
         return message
 
     def close(self):
-        if self.closed:
-            return
+        with self._close_lock:
+            if self.closed:
+                return
 
-        self.closed = True
+            self.closed = True
+
         self.hang_up()
 
 
@@ -279,9 +281,11 @@ def ipc_dirs():
 
         dirs.append(os.path.join(runtime_dir, "renpy-warp"))
 
-        pattern = os.path.join(
-            glob.escape(runtime_dir), "app", "*", "renpy-warp")
-        dirs.extend(sorted(glob.glob(pattern)))
+        # a flatpak or snap editor listens inside its own runtime dir
+        for sandbox in (("app", "*"), ("snap.*",)):
+            pattern = os.path.join(
+                glob.escape(runtime_dir), *sandbox, "renpy-warp")
+            dirs.extend(sorted(glob.glob(pattern)))
 
     dirs.append(f"/tmp/renpy-warp-{uid}")
 
