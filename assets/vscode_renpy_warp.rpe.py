@@ -196,15 +196,12 @@ class NamedPipeConnection(Connection):
         )
 
     def _owned_by_user(self):
-        """
-        whether the pipe has the same owner as this process, the check .NET
-        makes for PipeOptions.CurrentUserOnly. the owner reflects elevation, so
-        an elevated server and a normal client don't match
-        """
         import ctypes
         from ctypes import wintypes
 
+        # https://learn.microsoft.com/en-us/windows/win32/api/accctrl/ne-accctrl-se_object_type
         SE_KERNEL_OBJECT = 6
+        # https://learn.microsoft.com/en-us/windows/win32/secauthz/security-information
         OWNER_SECURITY_INFORMATION = 0x1
 
         kernel32 = ctypes.WinDLL("kernel32")
@@ -214,27 +211,31 @@ class NamedPipeConnection(Connection):
             owner = ctypes.c_void_p()
             descriptor = ctypes.c_void_p()
 
-            if advapi32.GetSecurityInfo(
+            # https://learn.microsoft.com/en-us/windows/win32/api/aclapi/nf-aclapi-getsecurityinfo
+            error = advapi32.GetSecurityInfo(
                 wintypes.HANDLE(handle),
                 SE_KERNEL_OBJECT,
                 OWNER_SECURITY_INFORMATION,
-                ctypes.byref(owner),
-                None,
-                None,
-                None,
-                ctypes.byref(descriptor),
-            ):
+                ctypes.byref(owner),  # ppsidOwner
+                None,  # ppsidGroup
+                None,  # ppDacl
+                None,  # ppSacl
+                ctypes.byref(descriptor),  # ppSecurityDescriptor
+            )
+
+            if error:
                 return None
 
+            # owner points into the descriptor. copy it before freeing
             try:
                 return ctypes.string_at(owner.value, advapi32.GetLengthSid(owner))
             finally:
                 kernel32.LocalFree(descriptor)
 
-        theirs = owner_sid(self._handle)
+        pipe_owner = owner_sid(self._handle)
+        process_owner = owner_sid(self._winapi.GetCurrentProcess())
 
-        # -1 is the pseudo-handle for this process
-        return theirs is not None and theirs == owner_sid(-1)
+        return pipe_owner is not None and pipe_owner == process_owner
 
     def read_chunk(self):
         ov, _ = self._winapi.ReadFile(self._handle, 65536, overlapped=True)
