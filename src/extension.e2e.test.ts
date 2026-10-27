@@ -119,6 +119,30 @@ async function wait_for(
 	}
 }
 
+async function wait_for_game_line(
+	process: AnyProcess,
+	line: number,
+	timeout_ms = 10_000
+): Promise<void> {
+	const deadline = Date.now() + timeout_ms
+	const at_line = new RegExp(`script\\.rpy:${line}\\b`)
+
+	while (true) {
+		const { text } = await process.console(
+			`"%s:%d" % renpy.get_filename_line()`
+		)
+		if (at_line.test(text)) return
+
+		if (Date.now() > deadline) {
+			throw new Error(
+				`timed out waiting for the game to reach script.rpy:${line}, last at ${text}` +
+					log_tail(process)
+			)
+		}
+		await sleep(100)
+	}
+}
+
 async function show_line(file: string, line: number): Promise<void> {
 	const document = await vscode.workspace.openTextDocument(file)
 	const editor = await vscode.window.showTextDocument(document)
@@ -472,11 +496,12 @@ suite("renpyWarp", function () {
 			const process = api.pm.at(-1)
 			assert.ok(process, "game did not launch")
 
-			// the launch warp lands before the rpe has connected, so nothing is
-			// reported until the game moves on from the warped line
 			await wait_for(() => process.socket_ready, "the rpe to connect", {
 				process
 			})
+
+			// an advance during boot would end a boot interaction instead
+			await wait_for_game_line(process, 7)
 			await process.advance()
 
 			await wait_for(
@@ -965,16 +990,15 @@ suite("renpyWarp", function () {
 				try {
 					await process.jump_to_label("pauses")
 					await wait_for(
-						() => process.last_cursor !== undefined,
-						"ren'py to report the paused line",
+						() => process.last_cursor?.line === 17,
+						"ren'py to report script.rpy:17",
 						{ process }
 					)
-					const paused_line = process.last_cursor!.line
 
 					await process.next_checkpoint()
 
 					await wait_for(
-						() => process.last_cursor?.line !== paused_line,
+						() => process.last_cursor?.line !== 17,
 						"ren'py to move past the paused line",
 						{ process }
 					)
@@ -1071,12 +1095,15 @@ suite("renpyWarp", function () {
 				)
 
 				try {
-					await process.jump_to_label("start")
+					await process.jump_to_label("pauses")
 					await wait_for(
-						() => process.last_cursor?.line === 5,
-						"ren'py to report script.rpy:5",
+						() => process.last_cursor?.line === 17,
+						"ren'py to report script.rpy:17",
 						{ process }
 					)
+
+					// boot labels turn can_step off too
+					changes.length = 0
 
 					await process.jump_to_label("_simulate_menu")
 					await wait_for(
