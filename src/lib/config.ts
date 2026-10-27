@@ -14,10 +14,6 @@ export function init_config_cache(context: vscode.ExtensionContext) {
 	)
 }
 
-export function get_configuration_object(): vscode.WorkspaceConfiguration {
-	return vscode.workspace.getConfiguration(extension_name)
-}
-
 export function get_config(key: string): unknown {
 	if (config_cache.has(key)) {
 		return config_cache.get(key)

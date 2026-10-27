@@ -3,12 +3,7 @@ import * as vscode from "vscode"
 import { ProcessManager } from "./lib/process/manager"
 import { FollowCursorService } from "./lib/follow_cursor"
 import { get_logger } from "./lib/log"
-import {
-	get_config,
-	get_configuration_object,
-	init_config_cache,
-	set_config
-} from "./lib/config"
+import { get_config, init_config_cache } from "./lib/config"
 import { StatusBar } from "./lib/status_bar"
 import { get_message_handler, WarpSocketService } from "./lib/socket"
 import { register_commands } from "./lib/commands"
@@ -49,19 +44,6 @@ export interface ExtensionApi {
 }
 
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
-	// migrate settings from version<=1.5.0 where renpyExtensionsEnabled was a boolean
-	const conf = get_configuration_object()
-	if (
-		typeof conf.inspect("renpyExtensionsEnabled")?.globalValue === "boolean"
-	) {
-		set_config("renpyExtensionsEnabled", undefined, false)
-	}
-	if (
-		typeof conf.inspect("renpyExtensionsEnabled")?.workspaceValue === "boolean"
-	) {
-		set_config("renpyExtensionsEnabled", undefined, true)
-	}
-
 	init_config_cache(context)
 
 	const status_bar = new StatusBar(context)
