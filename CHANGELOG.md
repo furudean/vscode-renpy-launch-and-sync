@@ -4,30 +4,44 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
-- Replace the `renpyWarp.sdkPath` setting with a `.renpy-version` file
-- The SDK picker is now a single cached list of known SDK versions. Selecting a
-  version records it in `.renpy-version`.
-- As a result of the above, `renpyWarp.downloadSdk` command is removed
-- Required versions will be downloaded on demand as opposed to when selected
-- Nightly versions of Ren'Py are more clearly visually displayed
+### Debugger
+
 - Now implements the VSCode debugger protocol for connected games.
-- The status bar no longer starts games. Starting and stopping happen through
-  the _Run and Debug_ view.
-- Per-process output now routes to the _Debug Console_
-- _Open Ren'Py to current line_ no longer shows as an icon button in the
-  editor's top-right toolbar. It's still available in other contexts.
+- The status bar no longer starts games. Starting and stopping is done through
+  the _Run and Debug_ view, or shortcut (<kbd>F5</kbd>).
+- Per-process output now routes to the _Debug Console_. You can use this console
+  to send commands to the game.
+- Process logs are no longer stored on system
 - Removed the `renpyWarp.launch` command, now redundant with _Run and Debug_
-- Removed the `renpyWarp.warpToFile` command
 - Removed the `renpyWarp.killAll` command and its keybinding. Stop games from
   the debugger instead.
-- Removed the `renpyWarp.strategy` setting. An open game is always warped in
-  place when Ren'Py extensions are enabled.
-- Process logs are no longer stored on system
 - Removed the `renpyWarp.processEnvironment` setting, now redundant with the
   `env` launch configuration attribute
-- Fix high CPU usage on Windows while checking for process liveness
+
+### SDK management
+
+- Replace the `renpyWarp.sdkPath` setting with a .renpy-version file in the
+  project directory. This file can be a version number, or an absolute path to
+  an SDK.
+- The SDK picker is now a single cached list of known SDK versions.
+- Required versions will be downloaded on demand as opposed to when selected
+- As a result of the above, `renpyWarp.downloadSdk` command is removed
+- Nightly versions of Ren'Py are more clearly visually displayed
 - Ren'Py extensions now explicitly require Ren'Py 8.3 or newer. This has been an
   informal requirement for a while.
+
+### Other changes
+
+- Use UNIX pipes (or named pipes on Windows) for IPC for better security
+- _Open Ren'Py to current line_ no longer shows as an icon button in the
+  editor's top-right toolbar. It's still available in other contexts.
+- Removed the `renpyWarp.warpToFile` command
+- Removed the `renpyWarp.strategy` setting. An open game is always warped in
+  place when Ren'Py extensions are enabled.
+
+### Fixes
+
+- Fix high CPU usage on Windows while checking for process liveness
 
 ## 4.0.0 - 2026-09-15
 
