@@ -329,7 +329,12 @@ export function get_commands(
 			...args: unknown[]
 		): Promise<string | undefined> => {
 			const project_root = args[0] as string | undefined
-			const fs_path = await prompt_sdk_quick_pick(context, project_root)
+			const options = args[1] as { unset?: boolean } | undefined
+			const fs_path = await prompt_sdk_quick_pick(
+				context,
+				project_root,
+				options
+			)
 
 			return fs_path || undefined
 		},

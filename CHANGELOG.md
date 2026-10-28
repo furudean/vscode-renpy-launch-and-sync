@@ -32,6 +32,8 @@ All notable changes to this project will be documented in this file.
 - Ren'Py extensions now explicitly require Ren'Py 8.3 or newer. This has been an
   informal requirement for a while.
 - The status bar is no longer shown when no Ren'Py version is set
+- When a command needs an SDK and no Ren'Py version is set, the SDK picker now
+  says so in its title
 
 ### Other changes
 

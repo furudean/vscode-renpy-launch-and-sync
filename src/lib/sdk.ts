@@ -305,7 +305,8 @@ export async function get_sdk_path(
 
 		const picked = (await vscode.commands.executeCommand(
 			"renpyWarp.setSdkPath",
-			project_root ?? (await default_version_root())
+			project_root ?? (await default_version_root()),
+			{ unset: true }
 		)) as string | undefined
 		if (picked) return picked
 
@@ -332,7 +333,8 @@ export async function get_sdk_path(
 
 export async function prompt_sdk_quick_pick(
 	context: vscode.ExtensionContext,
-	project_root?: string
+	project_root?: string,
+	options: { unset?: boolean } = {}
 ): Promise<string | void> {
 	load_cached_remote_catalog(context)
 
@@ -528,6 +530,10 @@ export async function prompt_sdk_quick_pick(
 
 	const quick_pick = vscode.window.createQuickPick<SdkQuickPickItem>()
 	quick_pick.placeholder = fetching_placeholder
+	if (options.unset) {
+		quick_pick.title =
+			"No Ren'Py SDK is set for this project. Select one to continue"
+	}
 	quick_pick.keepScrollPosition = true
 	quick_pick.matchOnDescription = true
 	quick_pick.busy = !catalog
