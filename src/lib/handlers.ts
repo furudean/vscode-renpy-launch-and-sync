@@ -5,6 +5,7 @@ import { ProcessManager } from "./process"
 import { WarpSocketService } from "./socket"
 import { uninstall_rpes, update_existing_rpes } from "./rpe"
 import { get_sdk_path } from "./sdk"
+import { find_projects_in_workspaces } from "./path"
 
 const logger = get_logger()
 
@@ -92,5 +93,36 @@ export function register_handlers(
 	version_file_watcher.onDidChange(on_version_file_change)
 	version_file_watcher.onDidDelete(on_version_file_change)
 
-	context.subscriptions.push(server_on_change, version_file_watcher)
+	const on_project_change = () => {
+		find_projects_in_workspaces()
+			.then((projects) =>
+				vscode.commands.executeCommand(
+					"setContext",
+					"renpyWarp.hasProject",
+					projects.length > 0
+				)
+			)
+			.catch((error) => logger.error(error))
+	}
+
+	on_project_change()
+
+	const workspace_folders_on_change =
+		vscode.workspace.onDidChangeWorkspaceFolders(on_project_change)
+
+	const project_file_watcher = vscode.workspace.createFileSystemWatcher(
+		"**/game/**/*.rpy",
+		false,
+		true,
+		false
+	)
+	project_file_watcher.onDidCreate(on_project_change)
+	project_file_watcher.onDidDelete(on_project_change)
+
+	context.subscriptions.push(
+		server_on_change,
+		version_file_watcher,
+		workspace_folders_on_change,
+		project_file_watcher
+	)
 }

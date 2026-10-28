@@ -53,6 +53,9 @@ All notable changes to this project will be documented in this file.
 - Replace the `renpyWarp.resetSuppressedMessages` and
   `renpyWarp.resetWorkspaceState` commands with `renpyWarp.resetExtensionState`,
   which clears all data the extension has saved
+- Commands that need a Ren'Py project are hidden when the workspace has none
+- Commands that need Ren'Py extensions, such as _Go to current Ren'Py line_ and
+  _Start socket server_, are hidden while extensions are disabled
 
 ### Fixes
 
