@@ -59,6 +59,8 @@ All notable changes to this project will be documented in this file.
   recognized as Python blocks
 - Each paragraph of a monologue block (`"""text"""`) can now be warped to by
   its own line. (Requires Ren'Py 8.6 or newer.)
+- Fix the editor jumping back to an earlier line while following the cursor in
+  both directions
 
 ## 4.0.0 - 2026-09-15
 

@@ -38,6 +38,7 @@ export interface CurrentLineSocketMessage extends SocketMessage {
 	what?: string
 	said_from?: number
 	said_to?: number
+	warp_generation?: number
 }
 
 export interface ListLabelsSocketMessage extends SocketMessage {
@@ -97,6 +98,11 @@ export function get_message_handler(follow_cursor: FollowCursorService) {
 		)
 
 		if (follow_cursor.active_process !== process) return
+
+		if (process.is_late(message as CurrentLineSocketMessage)) {
+			logger.debug("ignoring a late report")
+			return
+		}
 
 		if (
 			!["Ren'Py updates Visual Studio Code", "Update both"].includes(

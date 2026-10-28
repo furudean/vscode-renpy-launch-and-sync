@@ -122,7 +122,7 @@ function is_at_renpy_cursor(
 ): boolean {
 	const last_cursor = rp.last_cursor
 
-	if (!last_cursor) return false
+	if (!last_cursor || rp.warp_pending) return false
 
 	const document = editor.document
 

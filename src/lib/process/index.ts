@@ -36,6 +36,10 @@ export class UnmanagedProcess {
 	debug_session_id?: string = undefined
 	can_step: boolean = false
 
+	warp_pending: boolean = false
+	private warps_sent = 0
+	private warp_generation = 0
+
 	private emitter = new EventEmitter()
 	emit = this.emitter.emit.bind(this.emitter)
 	on = this.emitter.on.bind(this.emitter)
@@ -65,8 +69,9 @@ export class UnmanagedProcess {
 			if (message.type === "list_labels") {
 				this.labels = message.labels as string[]
 			}
-			if (message.type === "current_line") {
+			if (message.type === "current_line" && !this.is_late(message)) {
 				this.last_cursor = message
+				this.warp_pending = false
 			}
 			if (message.type === "current_label") {
 				if (!is_system_label(message.label)) {
@@ -212,13 +217,28 @@ export class UnmanagedProcess {
 	 * 1-indexed line number
 	 */
 	async warp_to_line(file: string, line: number) {
+		const generation = ++this.warps_sent
+
 		await this.ipc({
 			type: "warp_to_line",
 			file,
-			line
+			line,
+			generation
 		})
 
+		if (generation > this.warp_generation) {
+			this.warp_generation = generation
+			this.warp_pending = true
+		}
+
 		this.emit("warped")
+	}
+
+	is_late(message: CurrentLineSocketMessage): boolean {
+		return (
+			message.warp_generation !== undefined &&
+			message.warp_generation !== this.warp_generation
+		)
 	}
 
 	/**

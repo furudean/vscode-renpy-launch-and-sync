@@ -595,6 +595,15 @@ def console_send(nonce, code, connection):
 
 _resume_context = None
 
+_warp_generation = None
+
+
+def warp_to_line(generation, spec):
+    global _warp_generation
+    _warp_generation = generation
+
+    renpy.exports.warp_to_line(spec)
+
 
 def begin_next_checkpoint():
     global _resume_context
@@ -614,11 +623,9 @@ def socket_send(message, connection):
 
 def handle_message(payload, connection):
     if payload["type"] == "warp_to_line":
-        file = payload["file"]
-        line = payload["line"]
+        spec = f"{payload['file']}:{int(payload['line'])}"
 
-        # !r so server-supplied values are only ever string literals
-        py_exec(f"renpy.warp_to_line({f'{file}:{int(line)}'!r})")
+        invoke(functools.partial(warp_to_line, payload.get("generation"), spec))
 
     elif payload["type"] == "set_autoreload":
         script = textwrap.dedent("""
@@ -716,6 +723,9 @@ def socket_producer(connection):
             "path": filename_abs.resolve().as_posix(),
             "relative_path": relative_filename.as_posix(),
         }
+
+        if _warp_generation is not None:
+            message["warp_generation"] = _warp_generation
 
         # the script text places the cursor on the dialogue. ren'py 8.3
         # and later also pass the displayed text to character callbacks,
@@ -815,6 +825,9 @@ def socket_service(path, version, checksum):
 
         renpy.config.quit_callbacks.append(renpy_warp_quit_callback)
         renpy.config.quit_action = RenpyWarpQuitAction()
+
+        global _warp_generation
+        _warp_generation = None
 
         logger.info(f"connected to renpy warp socket server on {path}")
         py_exec('renpy.notify("Connected to Ren\'Py Launch and Sync")')
