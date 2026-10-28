@@ -74,17 +74,17 @@ the direction next to _Follow Cursor_ in the status bar to cycle between the
 modes.
 
 <dl>
-   <dt><strong>Game → Script</strong></dt>
+   <dt><strong>Ren'Py → Script</strong></dt>
    <dd>
       Ren'Py advancing will update the editor's cursor
    </dd>
-   <dt><strong>Game ← Script</strong></dt>
+   <dt><strong>Ren'Py ← Script</strong></dt>
    <dd>
       Editor cursor will update Ren'Py's current line
    </dd>
-   <dt><strong>Game ↔ Script</strong></dt>
+   <dt><strong>Ren'Py ↔ Script</strong></dt>
    <dd>
-      Game and editor cursor stay in sync with each other
+      Ren'Py and editor cursor stay in sync with each other
    </dd>
 </dl>
 
