@@ -1,16 +1,17 @@
-# This file managed by the Ren'Py Launch and Sync Visual Studio Code extension.
+# This file managed by the Ren'Py Launch and Sync extension.
 #
-# This script provides a mechanism for your Ren'Py game to connect to VS Code
-# over a socket. It is automatically excluded from builds of your game. You can
-# delete this file if you do not want to use the features provided by the
-# extension.
+# This script provides a mechanism for your Ren'Py game to connect to Visual
+# Studio Code over a socket.
+#
+# You may delete this file if you do not want to use the features provided by
+# the extension.
 #
 # This file should not be checked into source control. You can add it to your
-# `.gitignore` file by adding the following line:
+# `.gitignore` with the following pattern:
 #
-# vscode_renpy_warp_*.rpe*
+#   vscode_renpy_warp_*.rpe*
 #
-# For more information, see https://github.com/furudean/vscode-renpy-warp
+# For more information visit https://github.com/furudean/vscode-renpy-warp
 #
 
 import functools
