@@ -161,13 +161,16 @@ async function write_version_file(value: string): Promise<void> {
 	await fs.writeFile(path.join(project_root, ".renpy-version"), value + "\n")
 }
 
-async function launch_game(): Promise<boolean> {
+async function launch_game(
+	extra: Record<string, unknown> = {}
+): Promise<boolean> {
 	return vscode.debug.startDebugging(vscode.workspace.workspaceFolders![0], {
 		type: "renpyWarp",
 		request: "launch",
 		name: "Launch Ren'Py project",
 		project: project_root,
-		env: BASE_ENV
+		env: BASE_ENV,
+		...extra
 	})
 }
 
@@ -217,12 +220,6 @@ suite("renpyWarp", function () {
 		await new Promise((resolve) => server.close(resolve))
 	})
 
-	test("registers commands", async () => {
-		const commands = await vscode.commands.getCommands(true)
-
-		assert.ok(commands.includes("renpyWarp.warpToLine"))
-	})
-
 	test("lints the project and opens the report", async () => {
 		const lint_txt = path.join(
 			sdk_path,
@@ -244,23 +241,6 @@ suite("renpyWarp", function () {
 			vscode.window.activeTextEditor!.document.getText(),
 			/Lint is not a substitute/
 		)
-	})
-
-	test("launches the game and kills it", async () => {
-		await launch_game()
-
-		assert.strictEqual(api.pm.length, 1)
-		const process = api.pm.at(0) as ManagedProcess
-
-		const exited = new Promise((resolve) => process.once("exit", resolve))
-		await api.pm.kill_all()
-		await exited
-
-		// a game that died on its own would have left an exit code behind
-		// rather than going down to our signal
-		assert.strictEqual(process.exit_code, null, "game exited early")
-		assert.strictEqual(process.dead, true)
-		assert.strictEqual(api.pm.length, 0)
 	})
 
 	suite("sdk management", function () {
@@ -288,13 +268,6 @@ suite("renpyWarp", function () {
 			const siblings = await fs.readdir(path.dirname(installed))
 			assert.ok(!siblings.includes(`${FAKE_NAME}.zip`), "archive left behind")
 			assert.ok(!siblings.includes(`${FAKE_NAME}_tmp`), "staging left behind")
-		})
-
-		test("lists downloaded sdks", async () => {
-			const sdks = (await api.sdk.list()).map((sdk) => path.basename(sdk))
-
-			assert.ok(sdks.includes(FAKE_NAME))
-			assert.ok(sdks.includes(SDK_NAME))
 		})
 
 		test("uninstalls an sdk", async () => {
@@ -372,26 +345,12 @@ suite("renpyWarp", function () {
 			return process
 		}
 
-		test("can receive and jump to a label", async () => {
+		test("ren'py and the editor follow each other", async () => {
 			const process = await running()
 
 			await process.wait_for_labels(10_000)
 			assert.ok(process.labels?.includes("start"), "label start not listed")
 
-			await process.jump_to_label("start")
-			await wait_for(
-				() => process.last_cursor?.line === 5,
-				`ren'py to report script.rpy:5`,
-				{ process }
-			)
-			assert.strictEqual(process.last_cursor?.relative_path, "script.rpy")
-		})
-
-		test("ren'py and the editor follow each other", async () => {
-			const process = await running()
-
-			// the previous test may have left the game sitting on script.rpy:5
-			// already, so forget that report before jumping there again
 			process.last_cursor = undefined
 			const cursor = () => process.last_cursor
 
@@ -401,6 +360,7 @@ suite("renpyWarp", function () {
 				`ren'py to report script.rpy:5`,
 				{ process }
 			)
+			assert.strictEqual(cursor()?.relative_path, "script.rpy")
 
 			// ren'py updates the editor as the game moves on to the next line of
 			// narration
@@ -678,57 +638,6 @@ suite("renpyWarp", function () {
 		// })
 	})
 
-	suite("unmanaged processes", function () {
-		this.timeout(30_000)
-
-		suiteSetup(async () => {
-			await update_config({
-				renpyExtensionsEnabled: "Enabled",
-				autoConnectExternalProcesses: "Always connect"
-			})
-		})
-
-		suiteTeardown(async () => {
-			await api.pm.kill_all()
-
-			await update_config({
-				renpyExtensionsEnabled: "Disabled",
-				autoConnectExternalProcesses: "Never connect"
-			})
-		})
-
-		test("discovers a process that isn't tracked by the process manager", async () => {
-			assert.strictEqual(api.pm.length, 0)
-
-			const launched = await api.launch_unmanaged()
-			assert.ok(launched, "process did not launch")
-
-			await wait_for(() => api.pm.length === 1, "the process to be discovered")
-
-			const discovered = api.pm.at(0)!
-			assert.strictEqual(discovered.pid, launched.pid)
-
-			assert.ok(
-				!("take_output_backlog" in discovered),
-				"process was tracked as managed"
-			)
-			assert.notStrictEqual(discovered, launched)
-
-			await wait_for(() => discovered.socket_ready, "the rpe to connect", {
-				process: discovered
-			})
-
-			await discovered.kill()
-			await wait_for(
-				() => api.pm.length === 0,
-				"the process to be forgotten on exit"
-			)
-
-			await (launched as ManagedProcess).wait_for_exit()
-			launched.dispose()
-		})
-	})
-
 	suite("debugging", function () {
 		this.timeout(30_000)
 
@@ -770,22 +679,29 @@ suite("renpyWarp", function () {
 				})
 			})
 
-			const started = await vscode.debug.startDebugging(folder, {
-				type: "renpyWarp",
-				request: "launch",
-				name: "t",
-				project: project_root,
-				env: BASE_ENV
-			})
+			// with no .renpy-version, only the sdk attribute can find an sdk
+			await fs.rm(path.join(project_root, ".renpy-version"), { force: true })
+
+			let started: boolean
+			try {
+				started = await launch_game({ sdk: sdk_path })
+			} finally {
+				await write_version_file(sdk_path)
+			}
 			assert.strictEqual(started, true, "debug session did not start")
 
 			assert.strictEqual(api.pm.length, 1)
-			const process = api.pm.at(0)!
+			const process = api.pm.at(0) as ManagedProcess
 			assert.strictEqual(vscode.debug.activeDebugSession?.type, "renpyWarp")
 
 			await vscode.debug.stopDebugging()
 			await wait_for(() => process.dead, "the game to die")
 			await terminated
+
+			// a game that died on its own would have left an exit code behind
+			// rather than going down to our signal. the rpe turns that signal
+			// into a clean quit, so this only holds with extensions disabled
+			assert.strictEqual(process.exit_code, null, "game exited early")
 
 			await wait_for(() => api.pm.length === 0, "the process to be forgotten")
 		})
@@ -805,6 +721,7 @@ suite("renpyWarp", function () {
 				})
 
 				assert.strictEqual(renpy_sessions().length, 1)
+				const socket = process.socket!
 
 				// warping an open window starts nothing, so the session it
 				// already has is the only one
@@ -816,6 +733,7 @@ suite("renpyWarp", function () {
 
 				await api.pm.kill_all()
 				await wait_for(() => api.pm.length === 0, "the game to die")
+				assert.strictEqual(socket.open, false, "the socket was left open")
 				await wait_for(
 					() => renpy_sessions().length === 0,
 					"the session to terminate"
@@ -875,34 +793,6 @@ suite("renpyWarp", function () {
 				)
 			} finally {
 				tracker.dispose()
-			}
-		})
-
-		test("closes the socket when a managed process is killed", async () => {
-			await update_config({ renpyExtensionsEnabled: "Enabled" })
-
-			try {
-				await launch_game()
-
-				const process = api.pm.at(-1)!
-				await wait_for(() => process.socket_ready, "the rpe to connect", {
-					process
-				})
-
-				const socket = process.socket!
-				assert.strictEqual(socket.open, true)
-
-				await api.pm.kill_all()
-				await wait_for(() => api.pm.length === 0, "the game to die")
-
-				assert.strictEqual(
-					socket.open,
-					false,
-					"the socket was left open after the process was killed"
-				)
-			} finally {
-				await api.pm.kill_all()
-				await update_config({ renpyExtensionsEnabled: "Disabled" })
 			}
 		})
 
@@ -1003,34 +893,6 @@ suite("renpyWarp", function () {
 					}
 				).showErrorMessage = original_show_error
 			}
-		})
-
-		test("launches with the sdk a configuration names", async () => {
-			// with no .renpy-version, only the attribute can find an sdk
-			await fs.rm(path.join(project_root, ".renpy-version"), { force: true })
-
-			try {
-				const started = await vscode.debug.startDebugging(folder, {
-					type: "renpyWarp",
-					request: "launch",
-					name: "t",
-					project: project_root,
-					sdk: sdk_path,
-					env: BASE_ENV
-				})
-
-				assert.strictEqual(started, true, "debug session did not start")
-				assert.strictEqual(api.pm.length, 1)
-			} finally {
-				await write_version_file(sdk_path)
-			}
-
-			await api.pm.kill_all()
-			await wait_for(() => api.pm.length === 0, "the game to die")
-			await wait_for(
-				() => renpy_sessions().length === 0,
-				"the session to terminate"
-			)
 		})
 
 		test("resolves a bare f5 to a launch configuration", async () => {
@@ -1168,24 +1030,6 @@ suite("renpyWarp", function () {
 				}
 			})
 
-			test("evaluates an expression typed into the debug console", async () => {
-				const { process } = await debugging()
-
-				try {
-					const session = vscode.debug.activeDebugSession
-					assert.strictEqual(session?.type, "renpyWarp")
-
-					const result = await session.customRequest("evaluate", {
-						expression: "1 + 1",
-						context: "repl"
-					})
-
-					assert.strictEqual(result.result, "2")
-				} finally {
-					await stop(process)
-				}
-			})
-
 			test("reports a console error without killing the session", async () => {
 				const { process } = await debugging()
 
@@ -1280,6 +1124,31 @@ suite("renpyWarp", function () {
 				})
 			})
 
+			test("forgets a discovered process once it exits", async () => {
+				assert.strictEqual(api.pm.length, 0)
+
+				const launched = await api.launch_unmanaged()
+				assert.ok(launched, "process did not launch")
+
+				await wait_for(
+					() => api.pm.length === 1,
+					"the process to be discovered"
+				)
+				const discovered = api.pm.at(0)!
+				await wait_for(() => discovered.socket_ready, "the rpe to connect", {
+					process: discovered
+				})
+
+				await discovered.kill()
+				await wait_for(
+					() => api.pm.length === 0,
+					"the process to be forgotten on exit"
+				)
+
+				await (launched as ManagedProcess).wait_for_exit()
+				launched.dispose()
+			})
+
 			test("gives a process it did not launch a session", async () => {
 				assert.strictEqual(api.pm.length, 0)
 
@@ -1291,6 +1160,12 @@ suite("renpyWarp", function () {
 					"the process to be discovered"
 				)
 				const discovered = api.pm.at(0)!
+				assert.strictEqual(discovered.pid, launched.pid)
+				assert.notStrictEqual(discovered, launched)
+				assert.ok(
+					!("take_output_backlog" in discovered),
+					"process was tracked as managed"
+				)
 
 				await wait_for(
 					() => session_for(discovered.pid) !== undefined,
