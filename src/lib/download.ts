@@ -50,7 +50,7 @@ async function ensure_sdk_download_permission(
 		return true
 
 	const selection = await vscode.window.showInformationMessage(
-		`Ren'Py Warp needs to download the Ren'Py SDK ${version} to do this.`,
+		`Ren'Py Warp and Sync wants to download Ren'Py ${version}`,
 		"Always download",
 		"Download this time",
 		"Stop"
