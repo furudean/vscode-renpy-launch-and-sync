@@ -275,9 +275,8 @@ export class StatusBar {
 				break
 
 			case "none":
-				this.sdk_bar.text = "$(warp-renpy)"
-				this.sdk_bar.tooltip = "No Ren'Py SDK configured"
-				break
+				this.sdk_bar.hide()
+				return
 		}
 
 		this.sdk_bar.command = {
