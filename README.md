@@ -47,8 +47,8 @@ can contain a SemVer version or an absolute path to an SDK on disk.
 ## Commands
 
 The extension provides many commands to interact with Ren'Py. Below is a table
-of some of the common ones. A full reference can be seen in the feature
-contributions tab.
+of some of the common ones. A full reference (including keybinds) can be seen in
+the feature contributions tab.
 
 | Command                       | Shortcut                                                     | Shortcut (Mac)                                          |
 | ----------------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
