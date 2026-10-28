@@ -488,6 +488,131 @@ suite("renpyWarp", function () {
 			)
 		})
 
+		test("only the editor follows when ren'py leads", async () => {
+			const process = await running()
+			await api.follow_cursor.set_direction("game_to_script")
+
+			try {
+				process.last_cursor = undefined
+				const cursor = () => process.last_cursor
+
+				await process.jump_to_label("start")
+				await wait_for(
+					() =>
+						vscode.window.activeTextEditor?.selection.active.line ===
+						editor_line(5),
+					"the editor to follow ren'py",
+					{ process }
+				)
+
+				await vscode.commands.executeCommand("cursorMove", {
+					to: "down",
+					by: "line",
+					value: 2
+				})
+				await sleep(500)
+				assert.strictEqual(cursor()?.line, 5, "ren'py followed the editor")
+			} finally {
+				await api.follow_cursor.set_direction("both")
+			}
+		})
+
+		test("only ren'py follows when the editor leads", async () => {
+			const process = await running()
+			await api.follow_cursor.set_direction("game_to_script")
+
+			try {
+				process.last_cursor = undefined
+				const cursor = () => process.last_cursor
+
+				// the game may already sit on script.rpy:5, which the editor won't
+				// sync to twice, so line both sides up on the next line instead
+				await process.jump_to_label("start")
+				await wait_for(
+					() => cursor()?.line === 5,
+					"ren'py to report script.rpy:5",
+					{ process }
+				)
+				await process.advance()
+				await wait_for(
+					() =>
+						vscode.window.activeTextEditor?.selection.active.line ===
+						editor_line(7),
+					"the editor to follow ren'py",
+					{ process }
+				)
+
+				await api.follow_cursor.set_direction("script_to_game")
+
+				await vscode.commands.executeCommand("cursorMove", {
+					to: "down",
+					by: "line",
+					value: 2
+				})
+				await wait_for(
+					() => cursor()?.line === 9,
+					"ren'py to follow the editor",
+					{ process }
+				)
+
+				// an advance during the warp would end its interaction instead
+				await wait_for_game_line(process, 9)
+				await process.advance()
+
+				await wait_for(
+					() => cursor()?.line === 11,
+					"ren'py to report script.rpy:11",
+					{ process }
+				)
+				await sleep(500)
+				assert.strictEqual(
+					vscode.window.activeTextEditor?.selection.active.line,
+					editor_line(9),
+					"the editor followed ren'py"
+				)
+			} finally {
+				await api.follow_cursor.set_direction("both")
+			}
+		})
+
+		test("the editor catches up when ren'py leads again", async () => {
+			const process = await running()
+
+			// park the editor where moving it can't warp the game
+			await api.follow_cursor.set_direction("game_to_script")
+			await show_line(script, editor_line(13))
+			await api.follow_cursor.set_direction("script_to_game")
+
+			try {
+				process.last_cursor = undefined
+				const cursor = () => process.last_cursor
+
+				await process.jump_to_label("start")
+				await wait_for(
+					() => cursor()?.line === 5,
+					"ren'py to report script.rpy:5",
+					{ process }
+				)
+				await sleep(500)
+				assert.strictEqual(
+					vscode.window.activeTextEditor?.selection.active.line,
+					editor_line(13),
+					"the editor followed ren'py"
+				)
+
+				await api.follow_cursor.set_direction("both")
+				await wait_for(
+					() =>
+						vscode.window.activeTextEditor?.selection.active.line ===
+						editor_line(5),
+					"the editor to catch up with ren'py",
+					{ process }
+				)
+			} finally {
+				await api.follow_cursor.set_direction("both")
+			}
+		})
+
 		test("launches the game warped to a line", async () => {
 			await api.pm.kill_all()
 			await wait_for(() => api.pm.length === 0, "the game to die")
