@@ -46,6 +46,9 @@ All notable changes to this project will be documented in this file.
 - Removed the `renpyWarp.warpToFile` command
 - Removed the `renpyWarp.strategy` setting. An open game is always warped in
   place when Ren'Py extensions are enabled.
+- Replace the `renpyWarp.resetSuppressedMessages` and
+  `renpyWarp.resetWorkspaceState` commands with `renpyWarp.resetExtensionState`,
+  which clears all data the extension has saved
 
 ### Fixes
 

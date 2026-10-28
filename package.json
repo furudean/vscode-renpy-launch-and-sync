@@ -260,11 +260,6 @@
 				"enablement": "renpyWarp.socketServerRunning"
 			},
 			{
-				"command": "renpyWarp.resetSuppressedMessages",
-				"title": "Reset suppressed notifications",
-				"category": "Ren'Py Launch"
-			},
-			{
 				"command": "renpyWarp.launchSDK",
 				"title": "Open the Ren'Py launcher",
 				"category": "Ren'Py Launch"
@@ -285,8 +280,8 @@
 				"category": "Ren'Py Launch"
 			},
 			{
-				"command": "renpyWarp.resetWorkspaceState",
-				"title": "Reset Workspace State",
+				"command": "renpyWarp.resetExtensionState",
+				"title": "Reset extension state",
 				"category": "Ren'Py Launch"
 			}
 		],

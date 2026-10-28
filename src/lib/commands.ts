@@ -359,11 +359,6 @@ export function get_commands(
 			wss.close()
 		},
 
-		"renpyWarp.resetSuppressedMessages": () => {
-			context.globalState.update("hideExternalProcessConnected", false)
-			context.globalState.update("hideRpeInstallUpdateMessage", false)
-		},
-
 		"renpyWarp.launchSDK": async () => {
 			const sdk_path = await get_sdk_path(context)
 			if (!sdk_path) return
@@ -475,12 +470,13 @@ export function get_commands(
 			}
 		},
 
-		"renpyWarp.resetWorkspaceState": async () => {
-			const keys = context.workspaceState.keys()
-			for (const key of keys) {
-				await context.workspaceState.update(key, undefined)
+		"renpyWarp.resetExtensionState": async () => {
+			for (const state of [context.workspaceState, context.globalState]) {
+				for (const key of state.keys()) {
+					await state.update(key, undefined)
+				}
 			}
-			vscode.window.showInformationMessage("Workspace state cleared", "OK")
+			vscode.window.showInformationMessage("Extension state cleared", "OK")
 		}
 	}
 
