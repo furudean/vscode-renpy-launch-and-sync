@@ -239,8 +239,12 @@ export class StatusBar {
 			this.follow_cursor_bar.hide()
 		}
 
+		this.follow_cursor_bar.command = "renpyWarp.toggleFollowCursor"
+
 		if (this.state.is_follow_cursor) {
 			this.follow_cursor_bar.text = "$(pinned) Following Cursor"
+			this.follow_cursor_bar.tooltip =
+				"Keeping the editor cursor and Ren'Py dialogue in sync\nClick to stop following"
 			this.follow_cursor_bar.color = new vscode.ThemeColor(
 				"statusBarItem.warningForeground"
 			)
@@ -249,9 +253,8 @@ export class StatusBar {
 			)
 		} else {
 			this.follow_cursor_bar.text = "$(pin) Follow Cursor"
-			this.follow_cursor_bar.command = "renpyWarp.toggleFollowCursor"
 			this.follow_cursor_bar.tooltip =
-				"When enabled, keep editor cursor and Ren'Py dialogue in sync"
+				"Keep the editor cursor and Ren'Py dialogue in sync\nClick to start following"
 			this.follow_cursor_bar.color = undefined
 			this.follow_cursor_bar.backgroundColor = undefined
 		}
