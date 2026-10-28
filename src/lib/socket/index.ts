@@ -104,12 +104,7 @@ export function get_message_handler(follow_cursor: FollowCursorService) {
 			return
 		}
 
-		if (
-			!["Ren'Py updates Visual Studio Code", "Update both"].includes(
-				get_config("followCursorMode") as string
-			)
-		)
-			return
+		if (follow_cursor.direction === "script_to_game") return
 
 		await sync_editor_with_renpy({
 			path: message.path as string,

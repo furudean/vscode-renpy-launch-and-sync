@@ -222,6 +222,12 @@
 				"enablement": "renpyWarp.renpyExtensionsEnabled"
 			},
 			{
+				"command": "renpyWarp.cycleFollowCursorDirection",
+				"title": "Cycle follow cursor direction",
+				"category": "Ren'Py Launch",
+				"enablement": "renpyWarp.renpyExtensionsEnabled"
+			},
+			{
 				"command": "renpyWarp.syncCursorPosition",
 				"title": "Go to current Ren'Py line",
 				"category": "Ren'Py Launch",
@@ -325,6 +331,11 @@
 				"mac": "cmd+shift+c"
 			},
 			{
+				"command": "renpyWarp.cycleFollowCursorDirection",
+				"key": "ctrl+alt+shift+c",
+				"mac": "cmd+alt+shift+c"
+			},
+			{
 				"command": "renpyWarp.syncCursorPosition",
 				"key": "ctrl+shift+e",
 				"mac": "alt+shift+e"
@@ -355,22 +366,6 @@
 					"default": "Ask",
 					"markdownDescription": "What to do when a process launched outside of Ren'Py is detected",
 					"order": 2
-				},
-				"renpyWarp.followCursorMode": {
-					"type": "string",
-					"order": 2,
-					"markdownDescription": "When in _Follow Cursor_ mode, what should be kept in sync?",
-					"default": "Ren'Py updates Visual Studio Code",
-					"enum": [
-						"Ren'Py updates Visual Studio Code",
-						"Visual Studio Code updates Ren'Py",
-						"Update both"
-					],
-					"markdownEnumDescriptions": [
-						"Editor will sync with current line in Ren'Py.",
-						"Ren'Py will sync with current line in the editor.",
-						"Try and keep both in sync."
-					]
 				},
 				"renpyWarp.followCursorBehavior": {
 					"type": "string",

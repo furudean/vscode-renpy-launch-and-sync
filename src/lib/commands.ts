@@ -13,7 +13,10 @@ import { get_executable } from "./sh"
 import { WarpSocketService } from "./socket"
 import { ProcessManager } from "./process"
 import { StatusBar } from "./status_bar"
-import { FollowCursorService, sync_editor_with_renpy } from "./follow_cursor"
+import {
+	FollowCursorService,
+	sync_editor_to_last_known_line
+} from "./follow_cursor"
 import { get_logger } from "./log"
 import { is_system_label } from "./label"
 import { get_statements, warp_refusal, warp_target } from "./script"
@@ -248,27 +251,16 @@ export function get_commands(
 			if (follow_cursor.enabled) {
 				follow_cursor.off()
 
-				if (!pm.length) {
-					status_bar.notify("$(pin) Follow Cursor: Off")
-				}
+				if (!pm.length) status_bar.flash_follow_cursor()
 			} else {
 				const process = pm.at(-1)
 
 				if (process) {
-					const last_cursor = process?.last_cursor
-
-					if (last_cursor !== undefined) {
-						await sync_editor_with_renpy({
-							line: last_cursor.line - 1,
-							path: last_cursor.path,
-							relative_path: last_cursor.relative_path,
-							what: last_cursor.what,
-							force: true
-						})
-					}
+					await follow_cursor.catch_up(process)
 				} else {
-					status_bar.notify("$(pinned) Follow Cursor: On")
 					follow_cursor.enabled = true
+					status_bar.update(() => ({ is_follow_cursor: true }))
+					status_bar.flash_follow_cursor()
 					return
 				}
 
@@ -276,24 +268,22 @@ export function get_commands(
 			}
 		},
 
+		"renpyWarp.cycleFollowCursorDirection": async () => {
+			await follow_cursor.cycle_direction()
+		},
+
 		"renpyWarp.syncCursorPosition": async () => {
 			const recent = pm.at(-1)
-			const last_cursor = recent?.last_cursor
 
-			if (last_cursor === undefined) {
+			if (recent?.last_cursor === undefined) {
 				vscode.window.showInformationMessage(
 					"Sync Cursor Position: No cursor reported from process yet",
 					"OK"
 				)
 				return
 			}
-			await sync_editor_with_renpy({
-				line: last_cursor.line - 1,
-				path: last_cursor.path,
-				relative_path: last_cursor.relative_path,
-				what: last_cursor.what,
-				force: true
-			})
+
+			await sync_editor_to_last_known_line(recent)
 		},
 
 		"renpyWarp.installRpe": async () => {

@@ -41,13 +41,14 @@ export interface ExtensionApi {
 	 */
 	launch_unmanaged: () => Promise<AnyProcess | undefined>
 	debug_provider: RenpyDebugConfigurationProvider
+	follow_cursor: FollowCursorService
 }
 
 export function activate(context: vscode.ExtensionContext): ExtensionApi {
 	init_config_cache(context)
 
 	const status_bar = new StatusBar(context)
-	const follow_cursor = new FollowCursorService({ status_bar })
+	const follow_cursor = new FollowCursorService({ context, status_bar })
 	const pm = new ProcessManager()
 	const ds = new DecorationService({ context })
 	const wss = new WarpSocketService({
@@ -149,7 +150,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		launch_unmanaged() {
 			return launch_renpy({ context, pm, wss, register: false })
 		},
-		debug_provider
+		debug_provider,
+		follow_cursor
 	}
 }
 

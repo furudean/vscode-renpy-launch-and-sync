@@ -46,15 +46,17 @@ can contain a SemVer version or an absolute path to an SDK on disk.
 
 ## Commands
 
-The extension provides many commands to interact with Ren'Py. You probably want
-to know about the following:
+The extension provides many commands to interact with Ren'Py. Below is a table
+of some of the common ones. A full reference can be seen in the feature
+contributions tab.
 
-| Command                      | Shortcut                                      | Shortcut (Mac)                             |
-| ---------------------------- | --------------------------------------------- | ------------------------------------------ |
-| Open Ren'Py to line          | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
-| Open Ren'Py at label         | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd> |
-| Go to current Ren'Py line    | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> | <kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> |
-| Toggle following cursor mode | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>  | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
+| Command                       | Shortcut                                                     | Shortcut (Mac)                                          |
+| ----------------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
+| Open Ren'Py to line           | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>                 | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>              |
+| Open Ren'Py at label          | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>                 | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>              |
+| Go to current Ren'Py line     | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>                | <kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>              |
+| Toggle following cursor mode  | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>                 | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>              |
+| Cycle follow cursor direction | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> | <kbd>⌘</kbd>+<kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
 
 Starting and stopping a game happen through the _Run and Debug_ view, triggered
 by <kbd>F5</kbd> by default.
@@ -67,25 +69,22 @@ The commands can otherwise be triggered in several ways:
 
 ### Follow Cursor
 
-Renpy Launch and Sync can keep its cursor in sync with the Ren'Py game. The
-direction of this sync can be controlled with the setting <code
-codesetting="renpyWarp.followCursorMode">renpyWarp.followCursorMode</code>
+Renpy Launch and Sync can keep its cursor in sync with the Ren'Py game. Click
+the direction next to _Follow Cursor_ in the status bar to cycle between the
+modes.
 
 <dl>
-   <dt><strong>Ren'Py updates Visual Studio Code</strong></dt>
+   <dt><strong>Game → Script</strong></dt>
    <dd>
-      The editor will move its cursor to match the current line of dialogue in
-      the game.
+      Ren'Py advancing will update the editor's cursor
    </dd>
-   <dt><strong>Visual Studio Code updates Ren'Py</strong></dt>
+   <dt><strong>Game ← Script</strong></dt>
    <dd>
-      Ren'Py will warp to the line being edited. Your game must be compatible
-      with warping for this to work correctly.
+      Editor cursor will update Ren'Py's current line
    </dd>
-   <dt><strong>Update both</strong></dt>
+   <dt><strong>Game ↔ Script</strong></dt>
    <dd>
-      Try and keep both in sync with each other. Because of how warping works,
-      this can be a bit janky, causing a feedback loop.
+      Game and editor cursor stay in sync with each other
    </dd>
 </dl>
 
@@ -100,11 +99,10 @@ Ren'Py 8.2 and earlier does not support RPE features.
 
 ## Troubleshooting
 
-In order to use the current line/file feature, your game must be compatible with
-warping as described in
+In order to jump to specific lines, your game must be compatible with warping as
+described in
 [the Ren'Py documentation](https://www.renpy.org/doc/html/developer_tools.html#warping-to-a-line).
-This feature has several limitations that you should be aware of, and as such
-may not work in all cases.
+This feature has several limitations, and as such may not work for all games.
 
 ## Attribution
 

@@ -11,6 +11,7 @@ import {
 import tildify from "tildify"
 import { get_sdk_path, get_version_file_raw_value } from "./sdk"
 import { is_explicit_path } from "./path"
+import { direction_info, FollowCursorDirection } from "./follow_cursor"
 
 const logger = get_logger()
 
@@ -38,16 +39,19 @@ export class StatusBar {
 	private sdk_bar: vscode.StatusBarItem
 	private instance_bar: vscode.StatusBarItem
 	private follow_cursor_bar: vscode.StatusBarItem
+	private direction_bar: vscode.StatusBarItem
 	private notification_bar: vscode.StatusBarItem
 	private subscriptions: vscode.Disposable[] = []
 
 	private message_timeout: NodeJS.Timeout | undefined
+	private flash_timeout: NodeJS.Timeout | undefined
 
 	private state = {
 		socket_server_status: "stopped" as "running" | "stopped",
-		/** how many processes `pm` tracks, which is also how many sessions run */
 		running_processes: 0,
 		is_follow_cursor: false,
+		follow_cursor_direction: "game_to_script" as FollowCursorDirection,
+		is_follow_cursor_flashing: false,
 		message: undefined as string | undefined,
 		message_level: undefined as number | undefined
 	}
@@ -65,6 +69,11 @@ export class StatusBar {
 		)
 
 		this.follow_cursor_bar = vscode.window.createStatusBarItem(
+			vscode.StatusBarAlignment.Left,
+			0
+		)
+
+		this.direction_bar = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
 			0
 		)
@@ -113,6 +122,7 @@ export class StatusBar {
 		this.subscriptions.push(
 			this.instance_bar,
 			this.follow_cursor_bar,
+			this.direction_bar,
 			this.notification_bar,
 			refresh_sdk_on_config_update,
 			refresh_sdk_on_active_editor_change,
@@ -147,6 +157,16 @@ export class StatusBar {
 		if (level >= (this.state.message_level ?? -1)) {
 			this.update(() => ({ message, message_level: level }))
 		}
+	}
+
+	flash_follow_cursor() {
+		clearTimeout(this.flash_timeout)
+
+		this.flash_timeout = setTimeout(() => {
+			this.update(() => ({ is_follow_cursor_flashing: false }))
+		}, 3000)
+
+		this.update(() => ({ is_follow_cursor_flashing: true }))
 	}
 
 	private refresh_sdk(): void {
@@ -210,7 +230,10 @@ export class StatusBar {
 		const extensions_enabled =
 			get_config("renpyExtensionsEnabled") === "Enabled"
 
-		if (installed && this.state.running_processes > 0 && extensions_enabled) {
+		const can_follow =
+			installed && this.state.running_processes > 0 && extensions_enabled
+
+		if (can_follow || this.state.is_follow_cursor_flashing) {
 			this.follow_cursor_bar.show()
 		} else {
 			this.follow_cursor_bar.hide()
@@ -232,6 +255,20 @@ export class StatusBar {
 			this.follow_cursor_bar.color = undefined
 			this.follow_cursor_bar.backgroundColor = undefined
 		}
+
+		if (
+			(can_follow && this.state.is_follow_cursor) ||
+			this.state.is_follow_cursor_flashing
+		) {
+			this.direction_bar.show()
+		} else {
+			this.direction_bar.hide()
+		}
+
+		const direction = direction_info(this.state.follow_cursor_direction)
+		this.direction_bar.text = direction.text
+		this.direction_bar.command = "renpyWarp.cycleFollowCursorDirection"
+		this.direction_bar.tooltip = `${direction.description}\nClick to switch direction`
 
 		if (
 			installed &&

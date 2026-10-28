@@ -37,6 +37,8 @@ All notable changes to this project will be documented in this file.
 
 ### Other changes
 
+- Replace the `renpyWarp.followCursorMode` setting with a per-workspace
+  direction, shown next to _Follow Cursor_ in the status bar.
 - Use UNIX pipes (or named pipes on Windows) for IPC for better security
 - Escape values sent by the extension before Ren'Py extensions use them
 - Removed the settings migration for `renpyWarp.renpyExtensionsEnabled` from

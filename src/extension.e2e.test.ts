@@ -337,9 +337,10 @@ suite("renpyWarp", function () {
 			await update_config({
 				renpyExtensionsEnabled: "Enabled",
 				followCursorOnLaunch: true,
-				followCursorMode: "Update both",
 				followCursorBehavior: "Cursor at line end"
 			})
+
+			await api.follow_cursor.set_direction("both")
 		})
 
 		suiteTeardown(async () => {
@@ -348,9 +349,10 @@ suite("renpyWarp", function () {
 			await update_config({
 				renpyExtensionsEnabled: "Disabled",
 				followCursorOnLaunch: false,
-				followCursorMode: "Ren'Py updates Visual Studio Code",
 				followCursorBehavior: "Just reveal"
 			})
+
+			await api.follow_cursor.set_direction("game_to_script")
 		})
 
 		// launches the game when nothing is running and hands back the process
