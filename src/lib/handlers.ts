@@ -24,7 +24,7 @@ export function register_handlers(
 					return
 
 				for (const process of pm) {
-					if (!process.socket) return
+					if (!process.socket) continue
 
 					logger.info("reloading process on save", process.pid)
 					await process.set_autoreload()
