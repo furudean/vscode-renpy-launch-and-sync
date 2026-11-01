@@ -5,7 +5,7 @@
 Renpy Launch and Sync contributes a debugger type. Starting and stopping a game
 is done through Visual Studio Code's built-in _Run and Debug_ view.
 
-A default launch configuration works, but you can add your own to
+The default launch configuration works, but you can add your own to
 `.vscode/launch.json` to customize it:
 
 ```jsonc
