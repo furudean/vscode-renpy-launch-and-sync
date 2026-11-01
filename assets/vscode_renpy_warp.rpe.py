@@ -31,9 +31,14 @@ from time import sleep
 
 import renpy  # type: ignore
 
-logging.basicConfig()
-
 logger = logging.getLogger("renpy_warp_service")
+
+if not logger.handlers:
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter(logging.BASIC_FORMAT))
+    logger.addHandler(handler)
+
+logger.propagate = False
 
 try:
     logger.setLevel(level=os.getenv("WARP_LOGLEVEL", logging.INFO))
