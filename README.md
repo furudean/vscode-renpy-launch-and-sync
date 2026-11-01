@@ -35,9 +35,10 @@ See [the user manual](docs/MANUAL.md) for further configuration and use.
 
 ## Version support
 
-Ren'Py 8.3+ is fully supported.
+Ren'Py 8.1+ is fully supported. On Ren'Py 8.1 and 8.2, the editor follows
+dialogue a whole line at a time, rather than pausing at each `{w}` and `{p}`.
 
-Ren'Py 8.2 and earlier does not support RPE features.
+Ren'Py 8.0 and earlier does not support RPE features.
 
 ## Attribution
 

@@ -29,8 +29,7 @@ All notable changes to this project will be documented in this file.
 - As a result of the above, `renpyWarp.downloadSdk` command is removed
 - Nightly versions of Ren'Py are more clearly visually displayed
 - The SDK picker no longer lists versions newer than the current stable release
-- Ren'Py extensions now explicitly require Ren'Py 8.3 or newer. This has been an
-  informal requirement for a while.
+- Ren'Py extensions are supported on versions as low as Ren'Py 8.1
 - The status bar is no longer shown when no Ren'Py version is set
 - When a command needs an SDK and no Ren'Py version is set, the SDK picker now
   says so in its title

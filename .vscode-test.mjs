@@ -14,7 +14,7 @@ const workspace = join(import.meta.dirname, "test", "fixtures", "project")
 // cache below, and the tests serve it to the extension from localhost so the
 // extension's own download path runs on every run without touching renpy.org.
 // RENPY_SDK_VERSION picks another sdk, defaulting to the oldest supported one
-const SDK_VERSION = process.env.RENPY_SDK_VERSION ?? "8.3.7"
+const SDK_VERSION = process.env.RENPY_SDK_VERSION ?? "8.1.0"
 const sdk_cache = join(
 	import.meta.dirname,
 	".vscode-test",

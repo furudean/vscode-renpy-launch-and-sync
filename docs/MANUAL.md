@@ -114,13 +114,14 @@ Set on games launched from the extension.
 
 ### Ren'Py configuration
 
-| Variable                         | Change                          |
-| -------------------------------- | ------------------------------- |
-| `config.display_start_callbacks` | Appends the service starter     |
-| `config.all_character_callbacks` | Appends a current line reporter |
-| `config.label_callbacks`         | Appends a label reporter        |
-| `config.quit_callbacks`          | Appends a socket closer         |
-| `config.quit_action`             | Replaces with a direct quit     |
+| Variable                         | Change                           |
+| -------------------------------- | -------------------------------- |
+| `config.display_start_callbacks` | Appends the service starter      |
+| `config.all_character_callbacks` | Appends a current line reporter  |
+| `config.label_callbacks`         | Appends a label reporter         |
+| `config.quit_callbacks`          | Appends a socket closer          |
+| `config.quit_action`             | Replaces with a direct quit      |
+| `config.periodic_callbacks`      | Appends a task runner on 8.1–8.2 |
 
 The RPE also turns on autoreload through `renpy.set_autoreload` when
 `renpyWarp.setAutoReloadOnSave` is enabled.
@@ -133,7 +134,7 @@ The extension writes files in your project in order to provide functionality.
 | --------------------------------------------------------- | ----------------------------------------- |
 | `game/libs/vscode_renpy_warp_<version>_<checksum>.rpe.py` | The RPE on Ren'Py 8.4+                    |
 | `game/vscode_renpy_warp_<version>_<checksum>.rpe.py`      | The RPE on Ren'Py 8.3                     |
-| `game/vscode_renpy_warp_<version>_<checksum>.rpe`         | The RPE on Ren'Py 8.2 and earlier         |
+| `game/vscode_renpy_warp_<version>_<checksum>.rpe`         | The RPE on Ren'Py 8.1 and 8.2             |
 | .renpy-version                                            | Stores your Ren'Py SDK version preference |
 
 `.rpe` is a zip archive with the RPE source as its `autorun.py`. On Ren'Py 8.3+,

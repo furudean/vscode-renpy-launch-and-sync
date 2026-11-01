@@ -9,6 +9,7 @@ const fs: typeof import("node:fs/promises") = require("node:fs/promises")
 const http: typeof import("node:http") = require("node:http")
 const { createHash }: typeof import("node:crypto") = require("node:crypto")
 const AdmZip: typeof import("adm-zip") = require("adm-zip")
+const semver: typeof import("semver") = require("semver")
 const vscode: typeof import("vscode") = require("vscode")
 
 // the sdk the game tests run against. .vscode-test.mjs has already fetched
@@ -17,6 +18,17 @@ const vscode: typeof import("vscode") = require("vscode")
 const SDK_VERSION = process.env.RENPY_SDK_VERSION as string
 const SDK_CACHE = process.env.RENPY_SDK_CACHE as string
 const SDK_NAME = `renpy-${SDK_VERSION}-sdk`
+
+// ren'py before 8.2 breaks a tie between a say and its EndTranslate in set
+// order, so a warp to dialogue can land on the statement after it. tests that
+// warp to dialogue skip there rather than flake
+// @see https://github.com/renpy/renpy/blob/b2289deb024a41edbe4741fcdf394b48b5ddb8a5/renpy/warp.py#L136-L146
+const dialogue_warp_test = semver.lt(
+	semver.coerce(SDK_VERSION) ?? "0.0.0",
+	"8.2.0"
+)
+	? test.skip
+	: test
 
 // a throwaway sdk for the management tests, built in memory
 const FAKE_NAME = "renpy-0.0.1-sdk"
@@ -345,7 +357,7 @@ suite("renpyWarp", function () {
 			return process
 		}
 
-		test("ren'py and the editor follow each other", async () => {
+		dialogue_warp_test("ren'py and the editor follow each other", async () => {
 			const process = await running()
 
 			await process.wait_for_labels(10_000)
@@ -399,54 +411,61 @@ suite("renpyWarp", function () {
 			assert.strictEqual(cursor()?.relative_path, "script.rpy")
 		})
 
-		test("leaves both sides alone when not following", async () => {
-			const process = await running()
+		dialogue_warp_test(
+			"leaves both sides alone when not following",
+			async () => {
+				const process = await running()
 
-			await vscode.commands.executeCommand("renpyWarp.toggleFollowCursor")
+				await vscode.commands.executeCommand("renpyWarp.toggleFollowCursor")
 
-			// park the editor on the `return`, then move the game. neither side
-			// should react to the other until following is back on
-			await show_line(script, editor_line(13))
-			process.last_cursor = undefined
-			const cursor = () => process.last_cursor
+				// park the editor on the `return`, then move the game. neither side
+				// should react to the other until following is back on
+				await show_line(script, editor_line(13))
+				process.last_cursor = undefined
+				const cursor = () => process.last_cursor
 
-			await process.jump_to_label("start")
-			await wait_for(
-				() => cursor()?.line === 5,
-				"ren'py to report script.rpy:5",
-				{ process }
-			)
-			await sleep(500)
-			assert.strictEqual(
-				vscode.window.activeTextEditor?.selection.active.line,
-				editor_line(13),
-				"editor moved while not following"
-			)
+				await process.jump_to_label("start")
+				await wait_for(
+					() => cursor()?.line === 5,
+					"ren'py to report script.rpy:5",
+					{ process }
+				)
+				await sleep(500)
+				assert.strictEqual(
+					vscode.window.activeTextEditor?.selection.active.line,
+					editor_line(13),
+					"editor moved while not following"
+				)
 
-			await show_line(script, editor_line(9))
-			await sleep(500)
-			assert.strictEqual(cursor()?.line, 5, "ren'py moved while not following")
+				await show_line(script, editor_line(9))
+				await sleep(500)
+				assert.strictEqual(
+					cursor()?.line,
+					5,
+					"ren'py moved while not following"
+				)
 
-			await vscode.commands.executeCommand("renpyWarp.toggleFollowCursor")
-			await wait_for(
-				() =>
-					vscode.window.activeTextEditor?.selection.active.line ===
-					editor_line(5),
-				"the editor to catch up with ren'py",
-				{ process }
-			)
+				await vscode.commands.executeCommand("renpyWarp.toggleFollowCursor")
+				await wait_for(
+					() =>
+						vscode.window.activeTextEditor?.selection.active.line ===
+						editor_line(5),
+					"the editor to catch up with ren'py",
+					{ process }
+				)
 
-			await vscode.commands.executeCommand("cursorMove", {
-				to: "down",
-				by: "line",
-				value: 2
-			})
-			await wait_for(
-				() => cursor()?.line === 7,
-				"ren'py to follow the editor again",
-				{ process }
-			)
-		})
+				await vscode.commands.executeCommand("cursorMove", {
+					to: "down",
+					by: "line",
+					value: 2
+				})
+				await wait_for(
+					() => cursor()?.line === 7,
+					"ren'py to follow the editor again",
+					{ process }
+				)
+			}
+		)
 
 		test("only the editor follows when ren'py leads", async () => {
 			const process = await running()
@@ -477,63 +496,66 @@ suite("renpyWarp", function () {
 			}
 		})
 
-		test("only ren'py follows when the editor leads", async () => {
-			const process = await running()
-			await api.follow_cursor.set_direction("game_to_script")
+		dialogue_warp_test(
+			"only ren'py follows when the editor leads",
+			async () => {
+				const process = await running()
+				await api.follow_cursor.set_direction("game_to_script")
 
-			try {
-				process.last_cursor = undefined
-				const cursor = () => process.last_cursor
+				try {
+					process.last_cursor = undefined
+					const cursor = () => process.last_cursor
 
-				// the game may already sit on script.rpy:5, which the editor won't
-				// sync to twice, so line both sides up on the next line instead
-				await process.jump_to_label("start")
-				await wait_for(
-					() => cursor()?.line === 5,
-					"ren'py to report script.rpy:5",
-					{ process }
-				)
-				await process.advance()
-				await wait_for(
-					() =>
-						vscode.window.activeTextEditor?.selection.active.line ===
-						editor_line(7),
-					"the editor to follow ren'py",
-					{ process }
-				)
+					// the game may already sit on script.rpy:5, which the editor won't
+					// sync to twice, so line both sides up on the next line instead
+					await process.jump_to_label("start")
+					await wait_for(
+						() => cursor()?.line === 5,
+						"ren'py to report script.rpy:5",
+						{ process }
+					)
+					await process.advance()
+					await wait_for(
+						() =>
+							vscode.window.activeTextEditor?.selection.active.line ===
+							editor_line(7),
+						"the editor to follow ren'py",
+						{ process }
+					)
 
-				await api.follow_cursor.set_direction("script_to_game")
+					await api.follow_cursor.set_direction("script_to_game")
 
-				await vscode.commands.executeCommand("cursorMove", {
-					to: "down",
-					by: "line",
-					value: 2
-				})
-				await wait_for(
-					() => cursor()?.line === 9,
-					"ren'py to follow the editor",
-					{ process }
-				)
+					await vscode.commands.executeCommand("cursorMove", {
+						to: "down",
+						by: "line",
+						value: 2
+					})
+					await wait_for(
+						() => cursor()?.line === 9,
+						"ren'py to follow the editor",
+						{ process }
+					)
 
-				// an advance during the warp would end its interaction instead
-				await wait_for_game_line(process, 9)
-				await process.advance()
+					// an advance during the warp would end its interaction instead
+					await wait_for_game_line(process, 9)
+					await process.advance()
 
-				await wait_for(
-					() => cursor()?.line === 11,
-					"ren'py to report script.rpy:11",
-					{ process }
-				)
-				await sleep(500)
-				assert.strictEqual(
-					vscode.window.activeTextEditor?.selection.active.line,
-					editor_line(9),
-					"the editor followed ren'py"
-				)
-			} finally {
-				await api.follow_cursor.set_direction("both")
+					await wait_for(
+						() => cursor()?.line === 11,
+						"ren'py to report script.rpy:11",
+						{ process }
+					)
+					await sleep(500)
+					assert.strictEqual(
+						vscode.window.activeTextEditor?.selection.active.line,
+						editor_line(9),
+						"the editor followed ren'py"
+					)
+				} finally {
+					await api.follow_cursor.set_direction("both")
+				}
 			}
-		})
+		)
 
 		test("the editor catches up when ren'py leads again", async () => {
 			const process = await running()
@@ -573,7 +595,7 @@ suite("renpyWarp", function () {
 			}
 		})
 
-		test("launches the game warped to a line", async () => {
+		dialogue_warp_test("launches the game warped to a line", async () => {
 			await api.pm.kill_all()
 			await wait_for(() => api.pm.length === 0, "the game to die")
 

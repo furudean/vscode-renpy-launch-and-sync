@@ -6,10 +6,14 @@ import { version as pkg_version } from "../../package.json"
 import semver from "semver"
 import { get_logger } from "./log"
 import fs from "node:fs/promises"
+import AdmZip from "adm-zip"
 import { createHash } from "node:crypto"
 import { find_projects_in_workspaces, mkdir_exist_ok } from "./path"
 import { get_user_ignore_pattern, show_file } from "./config"
-import { prompt_not_rpy8_invalid_configuration } from "./onboard"
+import {
+	MIN_RPE_VERSION,
+	prompt_not_rpy8_invalid_configuration
+} from "./onboard"
 import memoize from "memoize"
 import { get_sdk_path } from "./sdk"
 
@@ -63,9 +67,9 @@ export async function install_rpe({
 }): Promise<string | undefined> {
 	const version = await get_version(executable)
 
-	if (semver.lt(version.semver, "8.3.0")) {
+	if (semver.lt(version.semver, MIN_RPE_VERSION)) {
 		logger.error(
-			`Ren'Py version must be 8.3.0 or newer to use extensions (is ${version.display})`
+			`Ren'Py version must be ${MIN_RPE_VERSION} or newer to use extensions (is ${version.display})`
 		)
 		return undefined
 	}
@@ -79,14 +83,23 @@ export async function install_rpe({
 
 	let file_path = path.join(project_root, "game/")
 
-	if (semver.gte(version.semver, "8.4.0")) {
-		file_path = path.join(file_path, "libs/")
-		await mkdir_exist_ok(file_path)
+	if (semver.gte(version.semver, "8.3.0")) {
+		if (semver.gte(version.semver, "8.4.0")) {
+			file_path = path.join(file_path, "libs/")
+			await mkdir_exist_ok(file_path)
+		}
+
+		file_path = path.join(file_path, `${file_base}.rpe.py`)
+
+		await fs.writeFile(file_path, rpe_source)
+	} else {
+		// ren'py before 8.3 only loads rpes zipped up with an autorun.py
+		file_path = path.join(file_path, `${file_base}.rpe`)
+
+		const zip = new AdmZip()
+		zip.addFile("autorun.py", rpe_source)
+		await fs.writeFile(file_path, zip.toBuffer())
 	}
-
-	file_path = path.join(file_path, `${file_base}.rpe.py`)
-
-	await fs.writeFile(file_path, rpe_source)
 
 	logger.info("wrote rpe to", file_path)
 
@@ -160,8 +173,9 @@ export async function has_current_rpe({
 	const renpy_version = await get_version(executable)
 	logger.debug("renpy version (semver):", renpy_version.semver)
 
-	if (semver.lt(renpy_version.semver, "8.3.0")) return false
+	if (semver.lt(renpy_version.semver, MIN_RPE_VERSION)) return false
 
+	const supports_rpe_py = semver.gte(renpy_version.semver, "8.3.0")
 	const supports_libs = semver.gte(renpy_version.semver, "8.4.0")
 	logger.debug("supports libs:", supports_libs)
 
@@ -172,7 +186,8 @@ export async function has_current_rpe({
 		logger.debug("basename:", basename)
 
 		// find mismatched feature support
-		if (basename.endsWith(".rpe")) return false
+		if (supports_rpe_py && basename.endsWith(".rpe")) return false
+		if (!supports_rpe_py && basename.endsWith(".rpe.py")) return false
 		if (!supports_libs && dirname.endsWith("libs")) return false
 		if (supports_libs && !dirname.endsWith("libs")) return false
 
@@ -203,7 +218,7 @@ export async function prompt_install_rpe({
 }): Promise<string | undefined> {
 	const version = await get_version(executable)
 
-	if (semver.lt(version.semver, "8.3.0")) {
+	if (semver.lt(version.semver, MIN_RPE_VERSION)) {
 		await prompt_not_rpy8_invalid_configuration(version.display, project)
 		return
 	}

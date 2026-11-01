@@ -505,12 +505,39 @@ def dialogue_offset(script_text, displayed, end):
     return i
 
 
+def own_main_thread_queue():
+    """
+    whether the rpe runs its own queue of work for the main thread. ren'py 8.3
+    drains its invoke queue inside the interaction's event loop, where
+    `EndInteraction` is caught. 8.2 drains it before the loop, so the exception
+    escapes, and 8.1 has no queue. periodic callbacks run inside the loop on all
+    of them, so older versions drain a queue of the rpe's own from there
+    """
+    return renpy.version_tuple < (8, 3)
+
+
+_main_thread_queue = []
+
+
+def drain_main_thread_queue():
+    while _main_thread_queue:
+        fn, args = _main_thread_queue.pop(0)
+        fn(*args)
+
+
+def invoke_in_main_thread(fn, *args):
+    if own_main_thread_queue():
+        _main_thread_queue.append((fn, args))
+    else:
+        renpy.exports.invoke_in_main_thread(fn, *args)
+
+
 def invoke(fn):
     while renpy.exports.is_init_phase():
         logger.debug("in init phase, waiting...")
         sleep(0.2)
 
-    renpy.exports.invoke_in_main_thread(fn)
+    invoke_in_main_thread(fn)
 
 
 def py_exec(text):
@@ -701,23 +728,23 @@ def socket_producer(connection):
         if not interact:
             return
 
-        segmented = say_segments_supported()
-
-        # `show` fires once per pause, the first right after `begin`. without
-        # segment reporting it says nothing `begin` doesn't already say
-        if event != ("show" if segmented else "begin"):
-            return
-
         global _resume_context
 
-        if _resume_context is not None:
+        # `show` fires once per pause, the first right after `begin`. a step
+        # auto-advances through {w} and {p} so it lands on the next statement
+        if event == "show" and _resume_context is not None:
             if renpy.game.context().current == _resume_context:
-                # auto-advance through {w} or {p} so a step lands on the next
-                # statement, not mid-line
-                renpy.exports.invoke_in_main_thread(renpy.exports.end_interaction, True)
+                invoke_in_main_thread(renpy.exports.end_interaction, True)
                 return
 
             _resume_context = None
+
+        segmented = say_segments_supported()
+
+        # without segment reporting, `show` says nothing `begin` doesn't
+        # already say
+        if event != ("show" if segmented else "begin"):
+            return
 
         filename, line = renpy.exports.get_filename_line()
         relative_filename = Path(filename).relative_to("game")
@@ -884,10 +911,24 @@ def try_endpoints_forever():
 
 def start_renpy_warp_service():
     if renpy.config.developer:
+        if own_main_thread_queue():
+            renpy.config.periodic_callbacks.append(drain_main_thread_queue)
+
         renpy_warp_thread = threading.Thread(target=try_endpoints_forever, daemon=True)
         renpy_warp_thread.start()
 
         logger.info("service thread started. periodically looking for warp server")
 
 
+def declassify():
+    """
+    removes `renpy_warp_*.rpe{.py}` from build
+
+    on renpy 8.3 and later, this is automatically done by the renpy build system
+    """
+    build = renpy.python.store_dicts["store.build"]
+    build["base_patterns"].insert(0, ("game/**vscode_renpy_warp_*.rpe", None))
+
+
+renpy.game.post_init.append(declassify)
 renpy.config.display_start_callbacks.append(start_renpy_warp_service)
