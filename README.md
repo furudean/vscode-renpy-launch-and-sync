@@ -1,9 +1,3 @@
-<img src="images/eileen.png"
-  align="right"
-  height="150"
-  width="150"
-  alt="Eileen, the Ren'Py mascot" />
-
 # Ren'Py Launch and Sync
 
 Launch and sync your Ren'Py game at the current line directly from inside Visual
