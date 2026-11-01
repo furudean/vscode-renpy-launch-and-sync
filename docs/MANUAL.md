@@ -125,22 +125,22 @@ Set on games launched from the extension.
 The RPE also turns on autoreload through `renpy.set_autoreload` when
 `renpyWarp.setAutoReloadOnSave` is enabled.
 
-### Files
+## Files
 
-| File                                                      | Purpose                           |
-| --------------------------------------------------------- | --------------------------------- |
-| `game/libs/vscode_renpy_warp_<version>_<checksum>.rpe.py` | The RPE on Ren'Py 8.4+            |
-| `game/vscode_renpy_warp_<version>_<checksum>.rpe.py`      | The RPE on Ren'Py 8.3             |
-| `game/vscode_renpy_warp_<version>_<checksum>.rpe`         | The RPE on Ren'Py 8.2 and earlier |
+The extension writes files in your project in order to provide functionality.
 
-The name carries the extension's version and a checksum of the RPE source, so
-the extension can tell when an installed RPE is out of date.
+| File                                                      | Purpose                                   |
+| --------------------------------------------------------- | ----------------------------------------- |
+| `game/libs/vscode_renpy_warp_<version>_<checksum>.rpe.py` | The RPE on Ren'Py 8.4+                    |
+| `game/vscode_renpy_warp_<version>_<checksum>.rpe.py`      | The RPE on Ren'Py 8.3                     |
+| `game/vscode_renpy_warp_<version>_<checksum>.rpe`         | The RPE on Ren'Py 8.2 and earlier         |
+| .renpy-version                                            | Stores your Ren'Py SDK version preference |
 
 `.rpe` is a zip archive with the RPE source as its `autorun.py`. On Ren'Py 8.3+,
 the extension will replace a `.rpe` with a `.rpe.py`.
 
 Older versions of the extension installed the RPE in other forms. The extension
-will locate and replace them on install or update.
+will locate and replace them on install or update. The old forms include:
 
 - `renpy_warp_*` in place of the `vscode_renpy_warp_*` prefix
 - No checksum in the name
