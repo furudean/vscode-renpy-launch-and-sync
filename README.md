@@ -1,3 +1,9 @@
+<img src="images/eileen.png"
+  align="right"
+  height="150"
+  width="150"
+  alt="Eileen, the Ren'Py mascot" />
+
 # Ren'Py Launch and Sync
 
 Launch and sync your Ren'Py game at the current line directly from inside Visual
@@ -15,94 +21,29 @@ Studio Code.
 - Can discover and bind to games that were started outside of Visual Studio Code
 - Automatically enable autoreload when files change (with a setting)
 
-## Configuration
+## Quickstart
 
-Renpy Launch and Sync contributes a debugger type, so starting and stopping a
-game is done through Visual Studio Code's built-in _Run and Debug_ view. A
-default launch configuration works, but you can add your own to
-`.vscode/launch.json` to customize it:
+1. Open your Ren'Py project folder in Visual Studio Code.
+2. Open your script file and press <kbd>F5</kbd>. If Visual Studio Code asks for
+   a debugger, pick _Ren'Py Launch and Sync_.
+3. Choose a Ren'Py SDK version. The extension can download one, or you can point
+   it at an SDK on disk. Your choice is saved to a `.renpy-version` file in the
+   project.
+4. Choose if you want to install extensions. Pick _Always use extensions_ to
+   enable warping and _Follow Cursor_.
+5. Once the game is running, put your cursor on a line of dialogue and press
+   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>
+   (<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> on Mac) to warp the game there.
+6. In Ren'Py, you can press <kbd>Shift</kbd>+<kbd>E</kbd> to show the current
+   line of dialogue in Visual Studio Code.
 
-```jsonc
-{
-	"type": "renpyWarp",
-	"request": "launch",
-	"name": "Launch Ren'Py project",
-	// all properties optional below
-	"project": "/path/to/project", // automatic if not specified
-	"file": "script.rpy", // script to warp to on launch (useful with ${file})
-	"line": 11, // line in `file` to warp to (useful with `${lineNumber}`)
-	"args": [], // CLI arguments to pass to renpy
-	"env": {}, // environment variables to pass to renpy
-	"sdk": "8.3.7" // sdk version to use (or path to one), taking precedence over .renpy-version file
-}
-```
-
-Per-process output is shown in the _Debug Console_ while a game is running. You
-can also use this to send console messages, like with
-<kbd>Ctrl</kbd>+<kbd>O</kbd>.
-
-The SDK version used is decided by a `.renpy-version` file in your project. This
-can contain a SemVer version or an absolute path to an SDK on disk.
-
-## Commands
-
-The extension provides many commands to interact with Ren'Py. Below is a table
-of some of the common ones. A full reference (including keybinds) can be seen in
-the feature contributions tab.
-
-| Command                       | Shortcut                                                     | Shortcut (Mac)                                          |
-| ----------------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
-| Open Ren'Py to line           | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>                 | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>              |
-| Open Ren'Py at label          | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>                 | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>J</kbd>              |
-| Go to current Ren'Py line     | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>                | <kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>              |
-| Toggle following cursor mode  | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>                 | <kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd>              |
-| Cycle follow cursor direction | <kbd>Ctrl</kbd>+<kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> | <kbd>⌘</kbd>+<kbd>⌥</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> |
-
-Starting and stopping a game happen through the _Run and Debug_ view, triggered
-by <kbd>F5</kbd> by default.
-
-The commands can otherwise be triggered in several ways:
-
-1. By using the right click context in an editor ![](images/editor_context.png)
-2. By opening the command palette and typing the command, i.e.
-   `Ren'Py Launch: Open Ren'Py to line`
-
-### Follow Cursor
-
-Renpy Launch and Sync can keep its cursor in sync with the Ren'Py game. Click
-the direction next to _Follow Cursor_ in the status bar to cycle between the
-modes.
-
-<dl>
-   <dt><strong>Ren'Py → Script</strong></dt>
-   <dd>
-      Ren'Py advancing will update the editor's cursor
-   </dd>
-   <dt><strong>Ren'Py ← Script</strong></dt>
-   <dd>
-      Editor cursor will update Ren'Py's current line
-   </dd>
-   <dt><strong>Ren'Py ↔ Script</strong></dt>
-   <dd>
-      Ren'Py and editor cursor stay in sync with each other
-   </dd>
-</dl>
-
-Cursor syncing can be turned on by default with the setting <code
-codesetting="renpyWarp.followCursorOnLaunch">renpyWarp.followCursorOnLaunch</code>.
+See [the user manual](docs/MANUAL.md) for further configuration and use.
 
 ## Version support
 
 Ren'Py 8.3+ is fully supported.
 
 Ren'Py 8.2 and earlier does not support RPE features.
-
-## Troubleshooting
-
-In order to jump to specific lines, your game must be compatible with warping as
-described in
-[the Ren'Py documentation](https://www.renpy.org/doc/html/developer_tools.html#warping-to-a-line).
-This feature has several limitations, and as such may not work for all games.
 
 ## Attribution
 
