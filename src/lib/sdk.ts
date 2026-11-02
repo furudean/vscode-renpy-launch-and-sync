@@ -435,23 +435,22 @@ export async function prompt_sdk_quick_pick(
 
 		// always shown, so it never vanishes from the list
 		if (current_sdk_path && current_custom_label) {
-			items.push(
-				{
-					label: current_custom_label,
-					description: "(selected)",
-					iconPath: new vscode.ThemeIcon("check"),
-					action: SdkAction.Path,
-					path: current_sdk_path,
-					buttons: [
-						{
-							iconPath: new vscode.ThemeIcon("folder"),
-							tooltip: "Show directory"
-						}
-					]
-				},
-				{ label: "", kind: vscode.QuickPickItemKind.Separator }
-			)
+			items.push({
+				label: current_custom_label,
+				description: "(selected)",
+				iconPath: new vscode.ThemeIcon("check"),
+				action: SdkAction.Path,
+				path: current_sdk_path,
+				buttons: [
+					{
+						iconPath: new vscode.ThemeIcon("folder"),
+						tooltip: "Show directory"
+					}
+				]
+			})
 		}
+
+		items.push({ label: "Release", kind: vscode.QuickPickItemKind.Separator })
 
 		if (!catalog) {
 			// current_sdk_path is intentionally kept in this list (rather than
@@ -497,7 +496,7 @@ export async function prompt_sdk_quick_pick(
 								iconPath: new vscode.ThemeIcon("more")
 							}
 						]),
-				{ label: "Nightly builds", kind: vscode.QuickPickItemKind.Separator },
+				{ label: "Nightly", kind: vscode.QuickPickItemKind.Separator },
 				...recent_nightlies.map((sdk) => map_remote(sdk, true)),
 				...(nightly_expanded_view
 					? older_nightlies.map((sdk) => map_remote(sdk, true))
