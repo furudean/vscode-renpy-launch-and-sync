@@ -293,12 +293,21 @@ export class StatusBar {
 				const location =
 					process.platform === "win32" ? sdk.path : tildify(sdk.path)
 
+				const display = sdk.version.display
+				const short_location = shrink_path(location, 32)
+
 				// the extension's own downloads go by version alone
-				this.sdk_bar.text = path
-					.toUnix(sdk.path)
-					.includes("/globalStorage/paisleysoftworks.renpywarp/")
-					? `$(warp-renpy) ${sdk.version.display}`
-					: `$(warp-renpy) ${shrink_path(location, 32)} (${sdk.version.display})`
+				if (
+					path
+						.toUnix(sdk.path)
+						.includes("/globalStorage/paisleysoftworks.renpywarp/")
+				) {
+					this.sdk_bar.text = `$(warp-renpy) ${display}`
+				} else if (path.basename(sdk.path) === display) {
+					this.sdk_bar.text = `$(warp-renpy) ${short_location}`
+				} else {
+					this.sdk_bar.text = `$(warp-renpy) ${short_location} (${display})`
+				}
 				this.sdk_bar.tooltip = with_source(
 					`Using Ren'Py SDK at ${location}`,
 					sdk.source
