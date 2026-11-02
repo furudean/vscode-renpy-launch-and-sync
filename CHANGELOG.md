@@ -31,6 +31,7 @@ All notable changes to this project will be documented in this file.
 - The SDK picker no longer lists versions newer than the current stable release
 - Ren'Py extensions are supported on versions as low as Ren'Py 8.1
 - The status bar is no longer shown when no Ren'Py version is set
+- Long SDK paths in the status bar are shortened
 - When a command needs an SDK and no Ren'Py version is set, the SDK picker now
   says so in its title
 
