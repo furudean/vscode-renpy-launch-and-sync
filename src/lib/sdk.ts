@@ -16,7 +16,6 @@ import {
 	list_downloaded_sdks,
 	uninstall_sdk
 } from "./download"
-import open from "open"
 import { get_executable, get_version } from "./sh"
 import {
 	drop_unreleased,
@@ -580,7 +579,10 @@ export async function prompt_sdk_quick_pick(
 			case "Show directory": {
 				if (!e.item.path) throw new Error("item path is undefined")
 				keep_open_through_external_focus_loss()
-				await open(e.item.path)
+				await vscode.commands.executeCommand(
+					"revealFileInOS",
+					vscode.Uri.file(e.item.path)
+				)
 				break
 			}
 			case "Delete": {
@@ -593,7 +595,7 @@ export async function prompt_sdk_quick_pick(
 			case "Show download in browser": {
 				if (!e.item.url) throw new Error("item url is undefined")
 				keep_open_through_external_focus_loss()
-				await open(e.item.url.toString())
+				await vscode.env.openExternal(vscode.Uri.parse(e.item.url.toString()))
 				break
 			}
 			default:

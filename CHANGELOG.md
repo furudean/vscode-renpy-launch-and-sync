@@ -35,6 +35,8 @@ All notable changes to this project will be documented in this file.
 - Status bar omits the version when the SDK folder name matches the version
 - When a command needs an SDK and no Ren'Py version is set, the SDK picker now
   says so in its title
+- Fixed the _Show directory_ and _Show download in browser_ buttons in the SDK
+  picker doing nothing
 
 ### Other changes
 
