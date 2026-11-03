@@ -194,19 +194,26 @@ export async function download_sdk(
 				cancellable: true
 			},
 			async (progress, cancelation_token) => {
-				const file = await file_downloader.downloadFile(
-					vscode.Uri.parse(url.href),
-					sdk_name + ".zip",
-					context,
-					cancelation_token,
-					(downloaded, total) => {
-						if (!total) return
-						progress.report({
-							increment: (downloaded / total) * 100
-						})
-					},
-					{ timeoutInMs: 60 * 1000, retries: 3, retryDelayInMs: 2000 }
-				)
+				const file = await file_downloader
+					.downloadFile(
+						vscode.Uri.parse(url.href),
+						sdk_name + ".zip",
+						context,
+						cancelation_token,
+						(downloaded, total) => {
+							if (!total) return
+							progress.report({
+								increment: (downloaded / total) * 100
+							})
+						},
+						{ timeoutInMs: 60 * 1000, retries: 3, retryDelayInMs: 2000 }
+					)
+					.catch((error) => {
+						if (cancelation_token.isCancellationRequested) {
+							throw new vscode.CancellationError()
+						}
+						throw error
+					})
 
 				if (validate) {
 					progress.report({
