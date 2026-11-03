@@ -15,17 +15,56 @@ import {
 	find_sdk_in_nightly_index,
 	get_sum_for_sdk,
 	list_nightly_sdks,
-	list_remote_sdks
+	list_remote_sdks,
+	RemoteSdk
 } from "./api"
 
 const logger = get_logger()
 
+async function with_retry_prompt<T>(
+	failure_message: string,
+	fn: () => Thenable<T>
+): Promise<T | undefined> {
+	for (;;) {
+		try {
+			return await fn()
+		} catch (error) {
+			if (error instanceof vscode.CancellationError) return undefined
+
+			logger.error(`${failure_message}:`, error)
+			const selection = await vscode.window.showErrorMessage(
+				`${failure_message}: ${error instanceof Error ? error.message : error}`,
+				"Retry",
+				"See logs"
+			)
+			if (selection === "See logs") logger.show()
+			if (selection !== "Retry") return undefined
+		}
+	}
+}
+
+function abort_signal(token: vscode.CancellationToken): AbortSignal {
+	const controller = new AbortController()
+	token.onCancellationRequested(() =>
+		controller.abort(new vscode.CancellationError())
+	)
+	return controller.signal
+}
+
 async function find_remote_sdk_by_name(
-	version: string
+	version: string,
+	signal: AbortSignal
 ): Promise<{ url: URL; nightly: boolean } | undefined> {
+	let error: unknown
+	const settle = (listing: Promise<RemoteSdk[]>) =>
+		listing.catch((e) => {
+			error = e
+			return []
+		})
+
 	const [stable, nightly] = await Promise.all([
-		list_remote_sdks(),
-		list_nightly_sdks()
+		settle(list_remote_sdks(signal)),
+		settle(list_nightly_sdks(signal))
 	])
 
 	const stable_match = stable.find((sdk) => sdk.name === version)
@@ -34,7 +73,25 @@ async function find_remote_sdk_by_name(
 	const nightly_match = nightly.find((sdk) => sdk.name === version)
 	if (nightly_match) return { url: nightly_match.url, nightly: true }
 
+	if (error) throw error
 	return undefined
+}
+
+async function find_sdk_archive_url(
+	version: string,
+	signal: AbortSignal
+): Promise<URL | undefined> {
+	const remote = await find_remote_sdk_by_name(version, signal)
+	if (!remote) {
+		vscode.window.showErrorMessage(
+			`Could not find Ren'Py SDK "${version}" to download.`
+		)
+		return undefined
+	}
+
+	return remote.nightly
+		? await find_sdk_in_nightly_index(remote.url, signal)
+		: await find_sdk_in_nginx_dir(remote.url, signal)
 }
 
 // tracks in-flight downloads by version so two callers racing on the same
@@ -79,21 +136,24 @@ export async function get_or_download_sdk_path(
 	if (in_flight) return in_flight
 
 	const download_promise = (async () => {
-		const remote = await find_remote_sdk_by_name(version)
-		if (!remote) {
-			vscode.window.showErrorMessage(
-				`Could not find Ren'Py SDK "${version}" to download.`
-			)
-			return undefined
-		}
+		const sdk_url = await with_retry_prompt(
+			`Failed to look up Ren'Py ${version}`,
+			() =>
+				vscode.window.withProgress(
+					{
+						title: `Looking up Ren'Py ${version}`,
+						location: vscode.ProgressLocation.Notification,
+						cancellable: true
+					},
+					(_progress, token) =>
+						find_sdk_archive_url(version, abort_signal(token))
+				)
+		)
+		if (!sdk_url) return undefined
 
 		if (!(await ensure_sdk_download_permission(context, version))) {
 			return undefined
 		}
-
-		const sdk_url = remote.nightly
-			? await find_sdk_in_nightly_index(remote.url)
-			: await find_sdk_in_nginx_dir(remote.url)
 
 		return await download_sdk(sdk_url, version, context)
 	})()
@@ -124,12 +184,10 @@ export async function download_sdk(
 ): Promise<string | undefined> {
 	const file_downloader: FileDownloader = await getApi()
 
-	if (typeof sdk_url === "string") {
-		sdk_url = new URL(sdk_url)
-	}
+	const url = new URL(sdk_url)
 
-	try {
-		return await vscode.window.withProgress(
+	return with_retry_prompt(`Failed to download Ren'Py ${sdk_name}`, () =>
+		vscode.window.withProgress(
 			{
 				title: `Downloading and installing Ren'Py ${sdk_name}`,
 				location: vscode.ProgressLocation.Notification,
@@ -137,7 +195,7 @@ export async function download_sdk(
 			},
 			async (progress, cancelation_token) => {
 				const file = await file_downloader.downloadFile(
-					vscode.Uri.parse(sdk_url.href),
+					vscode.Uri.parse(url.href),
 					sdk_name + ".zip",
 					context,
 					cancelation_token,
@@ -147,7 +205,7 @@ export async function download_sdk(
 							increment: (downloaded / total) * 100
 						})
 					},
-					{ timeoutInMs: 5 * 60 * 1000 }
+					{ timeoutInMs: 60 * 1000, retries: 3, retryDelayInMs: 2000 }
 				)
 
 				if (validate) {
@@ -155,7 +213,10 @@ export async function download_sdk(
 						message: "Validating checksum",
 						increment: -1000
 					})
-					const sum = await get_sum_for_sdk(sdk_url)
+					const sum = await get_sum_for_sdk(
+						url,
+						abort_signal(cancelation_token)
+					)
 
 					if (sum) {
 						const hash = await get_md5_hash(file.fsPath)
@@ -180,22 +241,7 @@ export async function download_sdk(
 				return sdk_path
 			}
 		)
-	} catch (error) {
-		if (error instanceof vscode.CancellationError) {
-			return undefined
-		}
-
-		logger.error(`failed to download SDK from ${sdk_url.href}:`, error)
-		vscode.window
-			.showErrorMessage(
-				`Failed to download SDK from ${sdk_url.href}`,
-				"OK",
-				"See logs"
-			)
-			.then((selection) => {
-				if (selection === "See logs") logger.show()
-			})
-	}
+	)
 }
 
 async function unpack_sdk_archive(archive_path: string, sdk_name: string) {

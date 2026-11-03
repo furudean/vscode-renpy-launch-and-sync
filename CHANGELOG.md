@@ -37,6 +37,8 @@ All notable changes to this project will be documented in this file.
   says so in its title
 - Fixed the _Show directory_ and _Show download in browser_ buttons in the SDK
   picker doing nothing
+- SDK download errors now show the reason and offer a _Retry_ button. Error
+  handling was also improved.
 
 ### Other changes
 

@@ -9,9 +9,15 @@ export interface RemoteSdk {
 }
 
 async function fetch_and_parse_nginx_directory(
-	url: string | URL
+	url: string | URL,
+	signal?: AbortSignal
 ): Promise<URL[]> {
-	const request = await fetch(url)
+	const request = await fetch(url, { signal })
+	if (!request.ok) {
+		throw new Error(
+			`${url} responded with ${request.status} ${request.statusText}`
+		)
+	}
 	const text = await request.text()
 
 	const { document } = new JSDOM(text).window
@@ -86,8 +92,13 @@ export function drop_unreleased(
 	return sdks.filter((sdk) => semver_compare(sdk.name, stable_version) >= 0)
 }
 
-export async function list_remote_sdks(): Promise<RemoteSdk[]> {
-	const urls = await fetch_and_parse_nginx_directory("https://renpy.org/dl/")
+export async function list_remote_sdks(
+	signal?: AbortSignal
+): Promise<RemoteSdk[]> {
+	const urls = await fetch_and_parse_nginx_directory(
+		"https://renpy.org/dl/",
+		signal
+	)
 
 	const sdks = urls
 		.map((url) => {
@@ -105,8 +116,15 @@ export async function list_remote_sdks(): Promise<RemoteSdk[]> {
 
 const NIGHTLY_INDEX_URL = "https://nightly.renpy.org/"
 
-export async function list_nightly_sdks(): Promise<RemoteSdk[]> {
-	const request = await fetch(NIGHTLY_INDEX_URL)
+export async function list_nightly_sdks(
+	signal?: AbortSignal
+): Promise<RemoteSdk[]> {
+	const request = await fetch(NIGHTLY_INDEX_URL, { signal })
+	if (!request.ok) {
+		throw new Error(
+			`${NIGHTLY_INDEX_URL} responded with ${request.status} ${request.statusText}`
+		)
+	}
 	const text = await request.text()
 
 	const { document } = new JSDOM(text).window
@@ -140,9 +158,10 @@ export async function list_nightly_sdks(): Promise<RemoteSdk[]> {
 }
 
 export async function find_sdk_in_nginx_dir(
-	directory: string | URL
+	directory: string | URL,
+	signal?: AbortSignal
 ): Promise<URL> {
-	const dir = await fetch_and_parse_nginx_directory(directory)
+	const dir = await fetch_and_parse_nginx_directory(directory, signal)
 
 	const sdk = dir.find((url) => url.pathname.endsWith("-sdk.zip"))
 
@@ -156,10 +175,16 @@ export async function find_sdk_in_nginx_dir(
 }
 
 export async function find_sdk_in_nightly_index(
-	url: string | URL
+	url: string | URL,
+	signal?: AbortSignal
 ): Promise<URL> {
 	url = new URL(url)
-	const request = await fetch(url)
+	const request = await fetch(url, { signal })
+	if (!request.ok) {
+		throw new Error(
+			`${url} responded with ${request.status} ${request.statusText}`
+		)
+	}
 	const text = await request.text()
 
 	const { document } = new JSDOM(text).window
@@ -183,22 +208,20 @@ export async function find_sdk_in_nightly_index(
 	return sdk
 }
 
-export async function get_sum_for_sdk(url: URL): Promise<string | undefined> {
+export async function get_sum_for_sdk(
+	url: URL,
+	signal?: AbortSignal
+): Promise<string | undefined> {
 	const sums_url = new URL("./checksums.txt", url.href)
 
-	const head = await fetch(sums_url, { method: "HEAD" })
-
-	if (head.status === 404) return undefined
-
-	if (!head.ok) {
+	const response = await fetch(sums_url, { signal })
+	if (response.status === 404) return undefined
+	if (!response.ok) {
 		throw new Error(
-			`failed to fetch sums.txt from ${sums_url}: ${
-				head.status
-			} ${await head.text()}`
+			`${sums_url} responded with ${response.status} ${response.statusText}`
 		)
 	}
 
-	const response = await fetch(sums_url)
 	const file_text = await response.text()
 
 	const md5_section = file_text.split("# md5")[1]?.split("# sha1")[0]

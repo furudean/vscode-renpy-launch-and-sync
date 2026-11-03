@@ -121,6 +121,22 @@ describe("remote sdk index", () => {
 	})
 })
 
+describe("list_nightly_sdks", () => {
+	afterEach(() => {
+		mock.restoreAll()
+	})
+
+	test("throws on a non-ok status", async () => {
+		mock.method(
+			globalThis,
+			"fetch",
+			async () => new Response("not found", { status: 404 })
+		)
+
+		await assert.rejects(list_nightly_sdks(), /responded with 404/)
+	})
+})
+
 describe("semver_compare", () => {
 	const sorted = (names: string[]) => [...names].sort(semver_compare)
 
