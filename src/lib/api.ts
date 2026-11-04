@@ -1,6 +1,5 @@
 import { JSDOM } from "jsdom"
 import { SemVer, parse as semver_parse } from "semver"
-import url_join from "url-join"
 
 export interface RemoteSdk {
 	name: string
@@ -197,7 +196,10 @@ export async function find_sdk_in_nightly_index(
 
 	const anchors = Array.from(table.querySelectorAll("a").values())
 
-	const dir = anchors.map((a) => new URL(url_join(url.href, a.href)))
+	const base = new URL(url)
+	if (!base.pathname.endsWith("/")) base.pathname += "/"
+
+	const dir = anchors.map((a) => new URL(a.href, base))
 
 	const sdk = dir.find((url) => url.pathname.endsWith("-sdk.zip"))
 
