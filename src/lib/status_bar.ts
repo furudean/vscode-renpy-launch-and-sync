@@ -10,7 +10,8 @@ import {
 } from "./sh"
 import tildify from "tildify"
 import { get_sdk_path, get_version_file_raw_value } from "./sdk"
-import { is_explicit_path, shrink_path } from "./path"
+import { is_explicit_path } from "./path"
+import { shrink_path } from "./shrink_path"
 import { direction_info, FollowCursorDirection } from "./follow_cursor"
 
 const logger = get_logger()
