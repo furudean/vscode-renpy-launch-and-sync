@@ -7,7 +7,6 @@ import child_process from "node:child_process"
 import { promisify } from "node:util"
 import { path_exists, resolve_path } from "./path"
 import fs from "node:fs/promises"
-import find_process from "find-process"
 import p_find from "p-locate"
 import { path_is_sdk } from "./sdk"
 
@@ -266,23 +265,33 @@ export async function get_executable(
 }
 
 export async function process_finished(pid: number): Promise<boolean> {
-	// find-process spawns powershell on windows, which is expensive to poll.
-	// windows has no zombies, so a signal 0 probe is enough.
-	if (IS_WINDOWS) {
-		try {
-			process.kill(pid, 0)
-			return false
-		} catch (error) {
-			return (error as NodeJS.ErrnoException).code === "ESRCH"
-		}
+	if (!Number.isSafeInteger(pid) || pid <= 0) return true
+
+	try {
+		// signal 0 asks whether the pid exists, it's not actually kill
+		process.kill(pid, 0)
+	} catch (error) {
+		return (error as NodeJS.ErrnoException).code === "ESRCH"
 	}
 
-	const [proc] = await find_process("pid", pid)
+	// windows does not have zombie processes
+	if (IS_WINDOWS) return false
 
-	logger.trace(`process ${pid} status:`, proc)
+	try {
+		// prints only the state column, with no header, for this one pid
+		const { stdout } = await exec_file(
+			"ps",
+			["-o", "stat=", "-p", String(pid)],
+			{
+				timeout: 5000
+			}
+		)
+		logger.trace(`process ${pid} state:`, stdout.trim())
 
-	// defunct processes are zombies - they're dead, but still in the process
-	// table. the renpy launcher will leave a defunct process behind until it's
-	// closed, so we need to check for this specifically.
-	return proc === undefined || proc.name === "<defunct>"
+		// ps marks a zombie's state with Z
+		return stdout.trim().startsWith("Z")
+	} catch (error) {
+		// ps exits 1 when the process is gone
+		return typeof (error as { code?: unknown }).code === "number"
+	}
 }

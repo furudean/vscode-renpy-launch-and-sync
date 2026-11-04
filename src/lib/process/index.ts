@@ -56,12 +56,19 @@ export class UnmanagedProcess {
 		this.socket = socket
 
 		if (monitor) {
+			const exited = () => {
+				if (this.dead) return
+				this.dead = true
+				clearInterval(this.check_alive_interval)
+				this.emit("exit")
+			}
+
+			this.on("socketMessage", (message: AnySocketMessage) => {
+				if (message.type === "close" && !message.reconnect) exited()
+			})
+
 			this.check_alive_interval = setInterval(async () => {
-				if (await process_finished(this.pid)) {
-					this.dead = true
-					this.emit("exit")
-					clearInterval(this.check_alive_interval)
-				}
+				if (await process_finished(this.pid)) exited()
 			}, 1000)
 		}
 

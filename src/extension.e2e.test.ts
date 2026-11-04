@@ -7,6 +7,7 @@ const assert: typeof import("node:assert") = require("node:assert")
 const path: typeof import("node:path") = require("node:path")
 const fs: typeof import("node:fs/promises") = require("node:fs/promises")
 const http: typeof import("node:http") = require("node:http")
+const child_process: typeof import("node:child_process") = require("node:child_process")
 const { createHash }: typeof import("node:crypto") = require("node:crypto")
 const AdmZip: typeof import("adm-zip") = require("adm-zip")
 const semver: typeof import("semver") = require("semver")
@@ -1260,6 +1261,97 @@ suite("renpyWarp", function () {
 				})
 
 				await launched.kill()
+				await (launched as ManagedProcess).wait_for_exit()
+				launched.dispose()
+			})
+
+			test("forgets a game that quits while its parent leaves a zombie", async function () {
+				if (process.platform === "win32") this.skip()
+
+				assert.strictEqual(api.pm.length, 0)
+
+				const rpes = await vscode.workspace.findFiles(
+					new vscode.RelativePattern(
+						project_root,
+						"game/**/vscode_renpy_warp_*"
+					)
+				)
+				if (rpes.length === 0) {
+					const warmup = await api.launch_unmanaged()
+					assert.ok(warmup, "process did not launch")
+					await wait_for(() => api.pm.length === 1, "the warmup to connect")
+					await api.pm.at(0)!.kill()
+					await (warmup as ManagedProcess).wait_for_exit()
+					warmup.dispose()
+					await wait_for(
+						() => api.pm.length === 0,
+						"the warmup to be forgotten"
+					)
+				}
+
+				const parent = child_process.spawn(
+					"sh",
+					[
+						"-c",
+						'"$0" "$@" & exec sleep 60',
+						path.join(sdk_path, "renpy.sh"),
+						project_root
+					],
+					{ env: { ...process.env, ...BASE_ENV }, stdio: "ignore" }
+				)
+
+				try {
+					await wait_for(() => api.pm.length === 1, "the game to be discovered")
+					const game = api.pm.at(0)!
+					await wait_for(() => game.socket_ready, "the rpe to connect", {
+						process: game
+					})
+
+					await game.console("renpy.quit()")
+
+					await wait_for(() => api.pm.length === 0, "the game to be forgotten")
+					assert.strictEqual(game.dead, true)
+
+					const state = child_process
+						.execFileSync("ps", ["-o", "stat=", "-p", String(game.pid)])
+						.toString()
+					assert.match(state, /^\s*Z/, "no zombie formed")
+				} finally {
+					parent.kill()
+				}
+			})
+
+			test("keeps tracking a game through a script reload", async () => {
+				assert.strictEqual(api.pm.length, 0)
+
+				const launched = await api.launch_unmanaged()
+				assert.ok(launched, "process did not launch")
+
+				await wait_for(
+					() => api.pm.length === 1,
+					"the process to be discovered"
+				)
+				const discovered = api.pm.at(0)!
+				await wait_for(() => discovered.socket_ready, "the rpe to connect", {
+					process: discovered
+				})
+
+				await discovered.console("renpy.reload_script()")
+
+				await wait_for(
+					() => !discovered.socket_ready,
+					"the reload to drop the socket",
+					{
+						process: discovered
+					}
+				)
+				await wait_for(() => discovered.socket_ready, "the rpe to reconnect", {
+					process: discovered,
+					timeout_ms: 20_000
+				})
+				assert.strictEqual(api.pm.get(discovered.pid), discovered)
+
+				await discovered.kill()
 				await (launched as ManagedProcess).wait_for_exit()
 				launched.dispose()
 			})

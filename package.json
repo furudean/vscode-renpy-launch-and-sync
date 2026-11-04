@@ -75,7 +75,6 @@
 		"@vscode/debugprotocol": "^1.68.0",
 		"adm-zip": "^0.6.1",
 		"extract-zip": "^2.0.1",
-		"find-process": "^2.0.0",
 		"jsdom": "^29.1.1",
 		"memoize": "^11.0.0",
 		"p-filter": "^4.1.0",

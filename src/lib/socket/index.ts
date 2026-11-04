@@ -68,11 +68,17 @@ export interface HelloSocketMessage extends SocketMessage {
 	nonce?: number
 }
 
+export interface CloseSocketMessage extends SocketMessage {
+	type: "close"
+	reconnect: boolean
+}
+
 export type AnySocketMessage =
 	| CurrentLineSocketMessage
 	| ListLabelsSocketMessage
 	| CurrentLabelSocketMessage
 	| ConsoleResultSocketMessage
+	| CloseSocketMessage
 
 /** connection details a client presents in its hello */
 export interface SocketClient {

@@ -115,10 +115,16 @@ class Connection:
 
         return message
 
-    def close(self):
+    def close(self, reconnect=True):
         with self._close_lock:
             if self.closed:
                 return
+
+            if not reconnect:
+                try:
+                    self.send({"type": "close", "reconnect": False})
+                except ConnectionClosed:
+                    pass
 
             self.closed = True
 
@@ -853,8 +859,11 @@ def socket_service(path, version, checksum):
         def renpy_warp_quit_callback():
             nonlocal quitting
             quitting = True
+
+            reloading = isinstance(sys.exc_info()[1], renpy.game.UtterRestartException)
+
             logger.info(f"closing socket connection {path}")
-            connection.close()
+            connection.close(reconnect=reloading)
 
         renpy.config.quit_callbacks.append(renpy_warp_quit_callback)
         renpy.config.quit_action = RenpyWarpQuitAction()
