@@ -3,7 +3,6 @@ import child_process, { ChildProcess } from "node:child_process"
 import { get_logger } from "../log"
 import { ProcessManager } from "./manager"
 import { EventEmitter } from "node:events"
-import tree_kill from "tree-kill"
 import {
 	AnySocketMessage,
 	CurrentLineSocketMessage,
@@ -114,20 +113,17 @@ export class UnmanagedProcess {
 	}
 
 	async kill(): Promise<void> {
-		return new Promise((resolve, reject) => {
+		try {
 			// SIGKILL bypasses "are you sure" dialog
-			tree_kill(this.pid, "SIGKILL", (error) => {
-				if (error) {
-					reject(error)
-				} else {
-					if (this.dead) return
-					this.dead = true
-					this.emit("exit")
-					this.dispose()
-					resolve()
-				}
-			})
-		})
+			process.kill(this.pid, "SIGKILL")
+		} catch (error) {
+			if ((error as NodeJS.ErrnoException).code !== "ESRCH") throw error
+		}
+
+		if (this.dead) return
+		this.dead = true
+		this.emit("exit")
+		this.dispose()
 	}
 
 	get socket_ready(): boolean {
