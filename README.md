@@ -41,16 +41,19 @@ The game should have been started. Setup is complete.
 
 You start the game through the debugger configuration you created.
 
-See [the user manual](docs/MANUAL.md) for further configuration and how to use the extension's features.
+See [the user manual](docs/MANUAL.md) for further configuration and how to use
+the extension's features.
 
 ## Version support
 
-Ren'Py 8.1+ is fully supported. On Ren'Py 8.1 and 8.2, the editor follows
-dialogue a whole line at a time, rather than pausing at `{w}`/`{p}`.
+Ren'Py 8.3+ supports all features.
 
-Ren'Py 8.0 and earlier does not support RPE features.
+On Ren'Py 8.2 and earlier, current line features can't understand `{w}`/`{p}`
+and instead show the full line.
 
-Ren'Py 7 versions may work, but no support will be provided.
+Ren'Py 8.0 and earlier does not support .rpe features at all.
+
+Ren'Py 7.x versions may work, but no support will be provided
 
 ## Attribution
 

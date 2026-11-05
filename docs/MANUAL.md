@@ -9,6 +9,17 @@ Studio Code.
 
 Ren'Py Launch and Sync is maintained by furudean (meri p).
 
+## Version support
+
+Ren'Py 8.3+ supports all features.
+
+On Ren'Py 8.2 and earlier, current line features can't understand `{w}`/`{p}`
+and instead show the full line.
+
+Ren'Py 8.0 and earlier does not support .rpe features at all.
+
+Ren'Py 7.x versions may work, but no support will be provided.
+
 ## Recommended workflow
 
 ### Initial setup
@@ -25,8 +36,8 @@ Ren'Py Launch and Sync is maintained by furudean (meri p).
    to proceed. The SDK will be downloaded to Visual Studio Code's data
    directory.
 7. You will be asked if [Ren'Py extensions](#renpy-extension-rperpepy) should be
-   installed. Most features, like _Follow Cursor_, warping in place, and
-   stepping, depend on them. This choice is stored in the
+   installed in the project. Most features, like _Follow Cursor_, warping in
+   place, and stepping, depend on them. This choice is stored in the
    `renpyWarp.renpyExtensionsEnabled` setting.
 
 The game should have been started. Setup is complete.
