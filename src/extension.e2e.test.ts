@@ -1312,10 +1312,16 @@ suite("renpyWarp", function () {
 					await wait_for(() => api.pm.length === 0, "the game to be forgotten")
 					assert.strictEqual(game.dead, true)
 
-					const state = child_process
-						.execFileSync("ps", ["-o", "stat=", "-p", String(game.pid)])
-						.toString()
-					assert.match(state, /^\s*Z/, "no zombie formed")
+					// the rpe reports the quit before the process finishes exiting
+					await wait_for(
+						() =>
+							/^\s*Z/.test(
+								child_process
+									.execFileSync("ps", ["-o", "stat=", "-p", String(game.pid)])
+									.toString()
+							),
+						"the game to become a zombie"
+					)
 				} finally {
 					parent.kill()
 				}
