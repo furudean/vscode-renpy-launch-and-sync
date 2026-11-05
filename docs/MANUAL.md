@@ -267,7 +267,8 @@ are documented in the tables below.
 
 On Windows, a named pipe is used for IPC. On Unix systems, a domain socket will
 be used. In previous versions of the extension, a websocket was used on all
-systems. This was discontinued due to security reasons.
+systems. This was discontinued due to security reasons. See
+[Security](#security).
 
 ### Modified environment variables
 
@@ -324,6 +325,73 @@ will locate and replace them on install or update. The old forms include:
 
 - `renpy_warp_*` in place of the `vscode_renpy_warp_*` prefix
 - No checksum in the name
+
+## Security
+
+### Trusting a project
+
+Ren'Py games are Python programs. Launching a project, linting it, or running
+any other SDK action on it runs that project's code with your user's
+permissions. Only open projects you trust.
+
+### IPC
+
+Each Visual Studio Code window listens on its own socket or pipe, named after
+the window's process ID.
+
+| Platform | Location                                                              |
+| -------- | --------------------------------------------------------------------- |
+| macOS    | ~/Library/Application Support/renpy-warp/\<pid\>.sock                 |
+| Linux    | $XDG_RUNTIME_DIR/renpy-warp/\<pid\>.sock, or /tmp/renpy-warp-\<uid\>/ |
+| Flatpak  | $XDG_RUNTIME_DIR/app/\<flatpak id\>/renpy-warp/\<pid\>.sock           |
+| Windows  | \\\\.\pipe\renpy-warp-\<pid\>                                         |
+
+On Unix systems, the socket directory is private to your user.
+
+- The extension creates it with `0700` permissions.
+- The extension refuses to listen if the directory is owned by another user, or
+  is not a directory.
+- If the directory is readable or writable by others, the extension resets it to
+  `0700`.
+- The RPE only connects to sockets in directories that pass the same checks.
+
+### Accepting a connection
+
+When a game connects, the extension checks it before sending it anything. It
+closes the connection if any check fails.
+
+1. The game must identify itself within 5 seconds.
+2. The game's project must be a project in one of the window's workspace
+   folders.
+3. The RPE's checksum must match the RPE bundled with the extension. If it
+   doesn't, the extension offers to update the RPE instead.
+4. A game the extension didn't launch is handled by the
+   `renpyWarp.autoConnectExternalProcesses` setting
+
+The extension recognizes games it launched by `WARP_IPC_NONCE`, a random number
+it passes to each game it starts.
+
+These checks keep unrelated games out of the window. They don't stop malicious
+software already running as your user, since that software could do anything the
+extension can.
+
+### What a connection can do
+
+A connected game sends its current line, label, and console output to the
+extension. The extension sends back commands, such as warping, stepping, and
+jumping to a label. The RPE runs most of these as Python inside the game. Values
+the extension sends, such as label names, are escaped before the RPE puts them
+in Python code.
+
+The _Debug Console_ runs whatever you type as Python in the game, the same as
+Ren'Py's own console.
+
+### SDK downloads
+
+SDKs are downloaded over HTTPS from https://www.renpy.org/dl/. After
+downloading, the extension compares the archive's MD5 checksum against the
+`checksums.txt` file published next to it, and deletes the archive if they don't
+match. If no `checksums.txt` exists for a version, the check is skipped.
 
 ## Troubleshooting
 
