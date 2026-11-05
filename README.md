@@ -23,9 +23,17 @@ Studio Code.
 2. Create a launch.json file (if none exists)
 3. Select _Renpy Launch and Sync_ as the debugger type. This should fill your launch.json with a basic debugger configuration.
 4. Start debugging
-5. You should be prompted to select an SDK version to use. If unsure, just select latest. This will write a file called .renpy-version into your workspace.
-6. You will be asked if downloading this SDK version is okay. Choose _Download_ to proceed. The SDK will be downloaded to Visual Studio Code's data directory.
-7. You will be asked how [Ren'Py extensions](docs/MANUAL.md#renpy-extension-rperpepy) should be installed. Choose _Always use extensions_ unless you have a reason not to. Most features, like _Follow Cursor_, warping in place, and stepping, depend on them. You can change this later with the _Set Ren'Py extensions preference_ command.
+5. You should be prompted to select an SDK version to use. If unsure, just
+   select latest. This will write a file called .renpy-version into your
+   workspace.
+6. You will be asked if downloading this SDK version is okay. Choose _Download_
+   to proceed. The SDK will be downloaded to Visual Studio Code's data
+   directory.
+7. You will be asked how [Ren'Py
+   extensions](docs/MANUAL.md#renpy-extension-rperpepy) should be installed.
+   Most features, like _Follow Cursor_, warping in place, and stepping, depend
+   on them. This choice is stored in the `renpyWarp.renpyExtensionsEnabled`
+   setting.
 
 The game should have been started. Setup is complete.
 

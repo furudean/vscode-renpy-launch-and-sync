@@ -25,10 +25,9 @@ Ren'Py Launch and Sync is maintained by furudean (meri p).
    to proceed. The SDK will be downloaded to Visual Studio Code's data
    directory.
 7. You will be asked if [Ren'Py extensions](#renpy-extension-rperpepy) should be
-   installed. Choose _Always use extensions_ unless you have a reason not to.
-   Most features, like _Follow Cursor_, warping in place, and stepping, depend
-   on them. This choice is stored in the `renpyWarp.renpyExtensionsEnabled`
-   setting.
+   installed. Most features, like _Follow Cursor_, warping in place, and
+   stepping, depend on them. This choice is stored in the
+   `renpyWarp.renpyExtensionsEnabled` setting.
 
 The game should have been started. Setup is complete.
 
