@@ -17,28 +17,32 @@ Studio Code.
 
 ## Quickstart
 
-1. Open your Ren'Py project folder in Visual Studio Code.
-2. Open your script file and press <kbd>F5</kbd>. If Visual Studio Code asks for
-   a debugger, pick _Ren'Py Launch and Sync_.
-3. Choose a Ren'Py SDK version. The extension can download one, or you can point
-   it at an SDK on disk. Your choice is saved to a `.renpy-version` file in the
-   project.
-4. Choose if you want to install extensions. Pick _Always use extensions_ to
-   enable warping and _Follow Cursor_.
-5. Once the game is running, put your cursor on a line of dialogue and press
-   <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>
-   (<kbd>⌘</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd> on Mac) to warp the game there.
-6. In Ren'Py, you can press <kbd>Shift</kbd>+<kbd>E</kbd> to show the current
-   line of dialogue in Visual Studio Code.
+### Initial setup
 
-See [the user manual](docs/MANUAL.md) for further configuration and use.
+1. Open the _Run and Debug_ menu
+2. Create a launch.json file (if none exists)
+3. Select _Renpy Launch and Sync_ as the debugger type. This should fill your launch.json with a basic debugger configuration.
+4. Start debugging
+5. You should be prompted to select an SDK version to use. If unsure, just select latest. This will write a file called .renpy-version into your workspace.
+6. You will be asked if downloading this SDK version is okay. Choose _Download_ to proceed. The SDK will be downloaded to Visual Studio Code's data directory.
+7. You will be asked how [Ren'Py extensions](docs/MANUAL.md#renpy-extension-rperpepy) should be installed. Choose _Always use extensions_ unless you have a reason not to. Most features, like _Follow Cursor_, warping in place, and stepping, depend on them. You can change this later with the _Set Ren'Py extensions preference_ command.
+
+The game should have been started. Setup is complete.
+
+### After setup
+
+You start the game through the debugger configuration you created.
+
+See [the user manual](docs/MANUAL.md) for further configuration and how to use the extension's features.
 
 ## Version support
 
 Ren'Py 8.1+ is fully supported. On Ren'Py 8.1 and 8.2, the editor follows
-dialogue a whole line at a time, rather than pausing at each `{w}` and `{p}`.
+dialogue a whole line at a time, rather than pausing at `{w}`/`{p}`.
 
 Ren'Py 8.0 and earlier does not support RPE features.
+
+Ren'Py 7 versions may work, but no support will be provided.
 
 ## Attribution
 

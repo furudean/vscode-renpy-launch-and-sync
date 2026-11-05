@@ -231,7 +231,7 @@
 			},
 			{
 				"command": "renpyWarp.setSdkPath",
-				"title": "Set Ren'Py SDK",
+				"title": "Select Ren'Py SDK version",
 				"category": "Ren'Py Launch"
 			},
 			{
