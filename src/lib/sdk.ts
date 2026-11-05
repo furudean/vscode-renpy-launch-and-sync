@@ -529,8 +529,7 @@ export async function prompt_sdk_quick_pick(
 	const quick_pick = vscode.window.createQuickPick<SdkQuickPickItem>()
 	quick_pick.placeholder = fetching_placeholder
 	if (options.unset) {
-		quick_pick.title =
-			"No Ren'Py SDK is set for this project. Select one to continue"
+		quick_pick.title = "No Ren'Py SDK is set for this project"
 	}
 	quick_pick.keepScrollPosition = true
 	quick_pick.matchOnDescription = true
