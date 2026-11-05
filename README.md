@@ -42,7 +42,7 @@ The game should have been started. Setup is complete.
 You start the game through the debugger configuration you created.
 
 See [the user manual](docs/MANUAL.md) for further configuration and how to use
-the extension's features.
+the extensions features.
 
 ## Version support
 
