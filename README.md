@@ -5,14 +5,14 @@ Studio Code.
 
 ## Features
 
-- Start and quit your Ren'Py game directly through _Run and Debug_
+- Start, stop and restart your Ren'Py game in _Run and Debug_
 - Step forward and back through game dialogue, warp to a specific line, or jump
   to label.
 - Move cursor position in Visual Studio Code as dialogue progresses with the
   _Follow Cursor_ mode
 - File decorations to remind you where you are in the game
-- Can manage installs of the Ren'Py SDK
-- Can discover and bind to games that were started outside of Visual Studio Code
+- Manage installs of the Ren'Py SDK
+- Discover and bind to games that were started outside of Visual Studio Code
 - Automatically enable autoreload when files change (with a setting)
 
 ## Quickstart
