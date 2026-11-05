@@ -315,7 +315,11 @@ function as_workspace_relative(project: string): string {
 	return relative ? `${variable}/${relative}` : variable
 }
 
-/** the entries offered in the Run and Debug view when there is no launch.json */
+/**
+ * the entries offered in the Run and Debug view when there is no launch.json.
+ * a new launch.json gets only the static `initialConfigurations` entry, which
+ * finds the project itself
+ */
 export class RenpyDynamicDebugConfigurationProvider
 	implements vscode.DebugConfigurationProvider
 {
@@ -914,11 +918,6 @@ export function register_debugger(
 			DEBUG_TYPE,
 			dynamic_provider,
 			vscode.DebugConfigurationProviderTriggerKind.Dynamic
-		),
-		vscode.debug.registerDebugConfigurationProvider(
-			DEBUG_TYPE,
-			dynamic_provider,
-			vscode.DebugConfigurationProviderTriggerKind.Initial
 		),
 		vscode.debug.registerDebugAdapterDescriptorFactory(
 			DEBUG_TYPE,
