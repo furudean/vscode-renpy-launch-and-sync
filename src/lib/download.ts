@@ -21,6 +21,8 @@ import {
 
 const logger = get_logger()
 
+class ChecksumError extends Error {}
+
 async function with_retry_prompt<T>(
 	failure_message: string,
 	fn: () => Thenable<T>
@@ -32,8 +34,19 @@ async function with_retry_prompt<T>(
 			if (error instanceof vscode.CancellationError) return undefined
 
 			logger.error(`${failure_message}:`, error)
+			const message = `${failure_message}: ${error instanceof Error ? error.message : error}`
+
+			if (error instanceof ChecksumError) {
+				vscode.window
+					.showErrorMessage(message, "See logs")
+					.then((selection) => {
+						if (selection === "See logs") logger.show()
+					})
+				return undefined
+			}
+
 			const selection = await vscode.window.showErrorMessage(
-				`${failure_message}: ${error instanceof Error ? error.message : error}`,
+				message,
 				"Retry",
 				"See logs"
 			)
@@ -230,7 +243,7 @@ export async function download_sdk(
 
 						if (hash !== sum) {
 							await rm(file.fsPath, { force: true })
-							throw new Error(
+							throw new ChecksumError(
 								`checksum mismatch for ${file.fsPath}: expected ${sum}, got ${hash}`
 							)
 						}
