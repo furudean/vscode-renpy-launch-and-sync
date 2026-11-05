@@ -75,12 +75,8 @@ jobs:
       - name: Release to Visual Studio Code Marketplace
         run: npm run publish:vsce -- --packagePath "$VSIX" --oidc
 
-      # TODO: use trusted publishing when it's live
       - name: Release to Open VSX Registry
-        run: >-
-          npm run publish:ovsx --
-          --packagePath "$VSIX"
-          --pat ${{ secrets.OVSX_TOKEN }}
+        run: npm run publish:ovsx -- --packagePath "$VSIX" --trusted-publishing
 
   release:
     name: Publish the release
