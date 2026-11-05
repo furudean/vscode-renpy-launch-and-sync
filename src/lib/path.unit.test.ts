@@ -1,7 +1,7 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { sep } from "node:path"
-import { shrink_path } from "./shrink_path.ts"
+import { shrink_path } from "./path.ts"
 
 function native(unix_path: string): string {
 	return unix_path.split("/").join(sep)

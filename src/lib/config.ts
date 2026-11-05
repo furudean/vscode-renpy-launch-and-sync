@@ -1,6 +1,8 @@
 import * as vscode from "vscode"
 
-import { name as extension_name } from "../../package.json"
+import pkg from "../../package.json" with { type: "json" }
+
+const extension_name = pkg.name
 
 const config_cache = new Map<string, unknown>()
 
