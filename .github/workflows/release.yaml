@@ -45,6 +45,9 @@ jobs:
     name: Build and publish
     needs: meta
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
       VSIX: renpy-warp-${{ needs.meta.outputs.tag }}.vsix
     steps:
@@ -69,12 +72,8 @@ jobs:
           path: ${{ env.VSIX }}
           if-no-files-found: error
 
-      # TODO: use OIDC when it launches . PATs stop working dec 1 2026
-      # see https://github.com/microsoft/vsmarketplace/issues/1422
       - name: Release to Visual Studio Code Marketplace
-        run: npm run publish:vsce -- --packagePath "$VSIX"
-        env:
-          VSCE_PAT: "${{ secrets.VSCE_PAT }}"
+        run: npm run publish:vsce -- --packagePath "$VSIX" --oidc
 
       # TODO: use trusted publishing when it's live
       - name: Release to Open VSX Registry
