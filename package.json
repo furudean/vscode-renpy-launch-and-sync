@@ -13,7 +13,7 @@
 		"renpy"
 	],
 	"categories": [
-		"Other"
+		"Debuggers"
 	],
 	"repository": {
 		"type": "git",
@@ -160,17 +160,6 @@
 							"type": "renpyWarp",
 							"request": "launch",
 							"name": "Launch Ren'Py project"
-						}
-					},
-					{
-						"label": "Ren'Py Launch and Sync: Open at current line",
-						"description": "Start Ren'Py warped to the line under the cursor",
-						"body": {
-							"type": "renpyWarp",
-							"request": "launch",
-							"name": "Open Ren'Py at current line",
-							"file": "^\"\\${file}\"",
-							"line": "^\"\\${lineNumber}\""
 						}
 					}
 				]
