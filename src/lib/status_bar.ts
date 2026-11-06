@@ -280,7 +280,7 @@ export class StatusBar {
 		) {
 			this.instance_bar.text = "$(plug) Start Ren'Py socket server"
 			this.instance_bar.command = "renpyWarp.startSocketServer"
-			this.instance_bar.tooltip = "Start Ren'Py socket server"
+			this.instance_bar.tooltip = "Click to start the socket server"
 			this.instance_bar.show()
 		} else {
 			this.instance_bar.hide()
@@ -328,6 +328,7 @@ export class StatusBar {
 				return
 		}
 
+		this.sdk_bar.tooltip += "\nClick to change version"
 		this.sdk_bar.command = {
 			title: "Set SDK Path",
 			command: "renpyWarp.setSdkPath",
