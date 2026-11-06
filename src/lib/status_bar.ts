@@ -245,18 +245,10 @@ export class StatusBar {
 			this.follow_cursor_bar.text = "$(pinned) Following Cursor"
 			this.follow_cursor_bar.tooltip =
 				"Keeping the editor cursor and Ren'Py dialogue in sync\nClick to stop following"
-			this.follow_cursor_bar.color = new vscode.ThemeColor(
-				"statusBarItem.warningForeground"
-			)
-			this.follow_cursor_bar.backgroundColor = new vscode.ThemeColor(
-				"statusBarItem.warningBackground"
-			)
 		} else {
 			this.follow_cursor_bar.text = "$(pin) Follow Cursor"
 			this.follow_cursor_bar.tooltip =
 				"Keep the editor cursor and Ren'Py dialogue in sync\nClick to start following"
-			this.follow_cursor_bar.color = undefined
-			this.follow_cursor_bar.backgroundColor = undefined
 		}
 
 		if (

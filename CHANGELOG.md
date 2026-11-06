@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
   wherever it falls in the list
 - Fixed the SDK picker not showing a selected version that has not been
   downloaded yet
+- Remove special color on status bar item when following cursor
 
 ## 5.0.0 - 2026-11-04
 
