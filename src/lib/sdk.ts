@@ -424,20 +424,17 @@ export async function prompt_sdk_quick_pick(
 		const nightly_date = opts.nightly
 			? parse_nightly_build_date(name)
 			: undefined
-		const label = nightly_date ?? name
 
 		const status = is_current
 			? "(selected)"
 			: opts.sdk_path
 				? "(downloaded)"
 				: undefined
-		const description = nightly_date
-			? [status, name].filter(Boolean).join(" · ")
-			: status
 
 		return {
-			label,
-			description,
+			label: name,
+			description:
+				[status, nightly_date].filter(Boolean).join(" · ") || undefined,
 			iconPath: is_current
 				? new vscode.ThemeIcon("check")
 				: opts.sdk_path
