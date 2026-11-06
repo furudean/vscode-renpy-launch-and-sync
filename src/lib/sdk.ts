@@ -18,8 +18,7 @@ import {
 } from "./download"
 import { get_executable, get_version } from "./sh"
 import {
-	drop_unreleased,
-	fetch_stable_version,
+	fetch_release_list,
 	list_nightly_sdks,
 	list_remote_sdks,
 	RemoteSdk,
@@ -157,23 +156,29 @@ async function fetch_remote_sdk_catalog(
 	context: vscode.ExtensionContext
 ): Promise<RemoteSdkCatalog | undefined> {
 	try {
-		const [remote_sdks, nightly_sdks, stable_version] = await Promise.all([
+		const [remote_sdks, nightly_sdks, releases] = await Promise.all([
 			list_remote_sdks(),
 			list_nightly_sdks(),
-			fetch_stable_version().catch((error) => {
-				logger.warn("failed to fetch stable ren'py version:", error)
+			fetch_release_list().catch((error) => {
+				logger.warn("failed to fetch ren'py release list:", error)
 				return undefined
 			})
 		])
 
 		if (remote_sdks.length === 0) return undefined
 
-		const all_valid_sdks = stable_version
-			? drop_unreleased(remote_sdks, stable_version)
-			: remote_sdks
+		// everything in /dl/ that's a version, prereleases included - drops
+		// the non-sdk directories (android, tmp...)
+		const all_valid_sdks = remote_sdks.filter((sdk) => sdk.semver)
+
+		// /dl/ also holds prereleases and stray nightlies - keep those out of
+		// the collapsed view
+		const final_sdks = releases
+			? all_valid_sdks.filter((sdk) => releases.has(sdk.name))
+			: all_valid_sdks
 
 		const filtered_sdks =
-			highest_patch_per_minor(all_valid_sdks).sort(sort_remote_sdks)
+			highest_patch_per_minor(final_sdks).sort(sort_remote_sdks)
 
 		cached_remote_catalog = { filtered_sdks, all_valid_sdks, nightly_sdks }
 
@@ -337,7 +342,13 @@ export async function prompt_sdk_quick_pick(
 ): Promise<string | void> {
 	load_cached_remote_catalog(context)
 
-	const current_sdk_path = await get_sdk_path(context, false, project_root)
+	const version_file = await get_version_file_raw_value(project_root)
+	const current_sdk_path = await get_sdk_path(
+		context,
+		false,
+		project_root,
+		version_file
+	)
 	let downloaded_sdks = await list_downloaded_sdks(context)
 	let catalog = cached_remote_catalog
 	let expanded = false
@@ -360,6 +371,17 @@ export async function prompt_sdk_quick_pick(
 		const version = executable && (await get_version(executable)).semver
 		if (version) current_custom_label += ` (${version})`
 	}
+
+	// the selected version's name - from the sdk on disk if it's downloaded,
+	// otherwise straight from .renpy-version, since picking a version that
+	// isn't downloaded yet only records it there
+	const current_name = current_custom_label
+		? undefined
+		: current_sdk_path
+			? basename(current_sdk_path)
+			: version_file.raw_value && !is_explicit_path(version_file.raw_value)
+				? version_file.raw_value
+				: undefined
 
 	function downloaded_path_for(name: string): string | undefined {
 		return downloaded_sdks.find((p) => basename(p) === name)
@@ -384,7 +406,7 @@ export async function prompt_sdk_quick_pick(
 		name: string,
 		opts: { sdk_path?: string; url?: URL; nightly?: boolean } = {}
 	): SdkQuickPickItem {
-		const is_current = opts.sdk_path === current_sdk_path && !!opts.sdk_path
+		const is_current = name === current_name
 		const buttons: vscode.QuickInputButton[] = []
 
 		if (opts.sdk_path) {
@@ -433,7 +455,17 @@ export async function prompt_sdk_quick_pick(
 	function build_items(): SdkQuickPickItem[] {
 		const items: SdkQuickPickItem[] = []
 
-		// always shown, so it never vanishes from the list
+		const map_remote = (sdk: RemoteSdk, nightly = false) =>
+			version_item(sdk.name, {
+				sdk_path: downloaded_path_for(sdk.name),
+				url: sdk.url,
+				nightly
+			})
+
+		// the current sdk is always pinned to the top, and left out of the
+		// lists below so it never shows up twice
+		const not_current = (name: string) => name !== current_name
+
 		if (current_sdk_path && current_custom_label) {
 			items.push({
 				label: current_custom_label,
@@ -448,16 +480,30 @@ export async function prompt_sdk_quick_pick(
 					}
 				]
 			})
+		} else if (current_name) {
+			const remote = catalog?.all_valid_sdks.find(
+				(sdk) => sdk.name === current_name
+			)
+			const nightly = catalog?.nightly_sdks.find(
+				(sdk) => sdk.name === current_name
+			)
+			items.push(
+				remote
+					? map_remote(remote)
+					: nightly
+						? map_remote(nightly, true)
+						: version_item(current_name, {
+								sdk_path: downloaded_path_for(current_name)
+							})
+			)
 		}
 
 		items.push({ label: "Release", kind: vscode.QuickPickItemKind.Separator })
 
 		if (!catalog) {
-			// current_sdk_path is intentionally kept in this list (rather than
-			// filtered out) - version_item marks it as selected, and it's the
-			// only place a managed current sdk is shown when offline
 			items.push(
 				...downloaded_sdks
+					.filter((p) => not_current(basename(p)))
 					.sort((a, b) => semver_compare(basename(a), basename(b)))
 					.map((p) => version_item(basename(p), { sdk_path: p }))
 			)
@@ -466,24 +512,18 @@ export async function prompt_sdk_quick_pick(
 			// versions collapsed behind "Show all versions" - only the unfiltered
 			// browse view hides them
 			const is_searching = quick_pick.value !== ""
-			const sdks_to_show =
+			const sdks_to_show = (
 				expanded || is_searching
 					? catalog.all_valid_sdks
 					: catalog.filtered_sdks
-
-			const map_remote = (sdk: RemoteSdk, nightly = false) =>
-				version_item(sdk.name, {
-					sdk_path: downloaded_path_for(sdk.name),
-					url: sdk.url,
-					nightly
-				})
+			).filter((sdk) => not_current(sdk.name))
 
 			const RECENT_NIGHTLY_COUNT = 5
-			const recent_nightlies = catalog.nightly_sdks.slice(
-				0,
-				RECENT_NIGHTLY_COUNT
+			const nightly_sdks = catalog.nightly_sdks.filter((sdk) =>
+				not_current(sdk.name)
 			)
-			const older_nightlies = catalog.nightly_sdks.slice(RECENT_NIGHTLY_COUNT)
+			const recent_nightlies = nightly_sdks.slice(0, RECENT_NIGHTLY_COUNT)
+			const older_nightlies = nightly_sdks.slice(RECENT_NIGHTLY_COUNT)
 			const nightly_expanded_view = nightly_expanded || is_searching
 
 			items.push(
