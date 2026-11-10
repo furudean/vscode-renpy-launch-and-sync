@@ -9,7 +9,7 @@ import {
 	SocketMessage
 } from "../socket"
 import { process_finished } from "../sh"
-import split2 from "split2"
+import { createInterface } from "node:readline"
 import { is_system_label } from "../label"
 import { WarpConnection } from "../socket/connection"
 
@@ -345,8 +345,10 @@ export class ManagedProcess extends UnmanagedProcess {
 			logger.debug(`process ${this.pid} >`, line)
 		}
 
-		this.process.stdout?.pipe(split2()).on("data", on_line)
-		this.process.stderr?.pipe(split2()).on("data", on_line)
+		if (this.process.stdout)
+			createInterface({ input: this.process.stdout }).on("line", on_line)
+		if (this.process.stderr)
+			createInterface({ input: this.process.stderr }).on("line", on_line)
 
 		this.process.on("close", (code) => {
 			this.dead = true

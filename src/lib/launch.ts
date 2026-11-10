@@ -20,7 +20,7 @@ import {
 } from "./path"
 import { prompt_configure_extensions } from "./onboard"
 import { WarpSocketService } from "./socket"
-import split2 from "split2"
+import { createInterface } from "node:readline"
 import { get_sdk_path } from "./sdk"
 
 export const logger = get_logger()
@@ -304,8 +304,8 @@ export async function launch_sdk({
 				// console of its own to write to
 				const on_line = (line: string) =>
 					logger.debug(`launcher ${pp.pid} >`, line)
-				pp.stdout?.pipe(split2()).on("data", on_line)
-				pp.stderr?.pipe(split2()).on("data", on_line)
+				if (pp.stdout) createInterface({ input: pp.stdout }).on("line", on_line)
+				if (pp.stderr) createInterface({ input: pp.stderr }).on("line", on_line)
 
 				pp.on("close", (code) => {
 					logger.info(`launcher process ${pp.pid} exited with code ${code}`)
