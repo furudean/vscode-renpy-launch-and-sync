@@ -17,6 +17,7 @@ All notable changes to this project will be documented in this file.
   downloaded yet
 - Change how nightly string is shown in SDK picker
 - Remove special color on status bar item when following cursor
+- The extension no longer requires mindaro-dev.file-downloader.
 
 ## 5.0.0 - 2026-11-04
 

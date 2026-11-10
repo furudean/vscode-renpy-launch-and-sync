@@ -1,14 +1,15 @@
-import { getApi, FileDownloader } from "@microsoft/vscode-file-downloader-api"
 import { ExtensionContext } from "vscode"
 import * as vscode from "vscode"
 import { get_logger } from "./log"
 import p_filter from "p-filter"
 import { path_is_sdk } from "./sdk"
-import { cp, mkdir, readdir, rm } from "node:fs/promises"
+import { cp, mkdir, readdir, rename, rm } from "node:fs/promises"
 import path from "upath"
-import { basename } from "node:path"
+import { basename, join } from "node:path"
 import { createHash } from "node:crypto"
-import { createReadStream } from "node:fs"
+import { createReadStream, createWriteStream } from "node:fs"
+import { Readable } from "node:stream"
+import { pipeline } from "node:stream/promises"
 import extract from "extract-zip"
 import {
 	find_sdk_in_nginx_dir,
@@ -189,14 +190,80 @@ function get_md5_hash(path: string): Promise<string> {
 	})
 }
 
+let storage_dir: Promise<string> | undefined
+
+function sdk_storage_dir(context: ExtensionContext): Promise<string> {
+	storage_dir ??= migrate_old_sdk_storage(context.globalStorageUri.fsPath)
+	return storage_dir
+}
+
+// earlier versions downloaded sdks through the file downloader extension
+async function migrate_old_sdk_storage(root: string): Promise<string> {
+	const dir = join(root, "sdks")
+	const legacy_dir = join(root, "file-downloader-downloads")
+
+	let entries
+	try {
+		entries = await readdir(legacy_dir, { withFileTypes: true })
+	} catch {
+		return dir
+	}
+
+	await mkdir(dir, { recursive: true })
+
+	let moved_all = true
+	for (const entry of entries) {
+		if (!entry.isDirectory()) continue
+
+		try {
+			await rename(join(legacy_dir, entry.name), join(dir, entry.name))
+			logger.info(`moved sdk ${entry.name} to ${dir}`)
+		} catch (error) {
+			moved_all = false
+			logger.error(`failed to move sdk ${entry.name} to ${dir}:`, error)
+		}
+	}
+
+	if (moved_all) await rm(legacy_dir, { recursive: true, force: true })
+
+	return dir
+}
+
+async function download_file(
+	url: URL,
+	file: string,
+	signal: AbortSignal,
+	on_progress: (fraction: number) => void
+): Promise<void> {
+	const response = await fetch(url, { signal })
+	if (!response.ok || !response.body) {
+		throw new Error(
+			`${url} responded with ${response.status} ${response.statusText}`
+		)
+	}
+
+	const total = Number(response.headers.get("content-length"))
+	let received = 0
+
+	await pipeline(
+		Readable.fromWeb(response.body),
+		async function* (chunks: AsyncIterable<Buffer>) {
+			for await (const chunk of chunks) {
+				received += chunk.length
+				if (total) on_progress(received / total)
+				yield chunk
+			}
+		},
+		createWriteStream(file)
+	)
+}
+
 export async function download_sdk(
 	sdk_url: string | URL,
 	sdk_name: string,
 	context: ExtensionContext,
 	validate = true
 ): Promise<string | undefined> {
-	const file_downloader: FileDownloader = await getApi()
-
 	const url = new URL(sdk_url)
 
 	return with_retry_prompt(`Failed to download Ren'Py ${sdk_name}`, () =>
@@ -206,45 +273,42 @@ export async function download_sdk(
 				location: vscode.ProgressLocation.Notification,
 				cancellable: true
 			},
-			async (progress, cancelation_token) => {
-				const file = await file_downloader
-					.downloadFile(
-						vscode.Uri.parse(url.href),
-						sdk_name + ".zip",
-						context,
-						cancelation_token,
-						(downloaded, total) => {
-							if (!total) return
-							progress.report({
-								increment: (downloaded / total) * 100
-							})
-						},
-						{ timeoutInMs: 60 * 1000, retries: 3, retryDelayInMs: 2000 }
-					)
-					.catch((error) => {
-						if (cancelation_token.isCancellationRequested) {
-							throw new vscode.CancellationError()
-						}
-						throw error
+			async function (progress, cancelation_token) {
+				const signal = abort_signal(cancelation_token)
+
+				const dir = await sdk_storage_dir(context)
+				await mkdir(dir, { recursive: true })
+				const archive = join(dir, sdk_name + ".zip")
+
+				let reported = 0
+
+				try {
+					await download_file(url, archive, signal, function (fraction) {
+						progress.report({ increment: fraction * 100 - reported })
+						reported = fraction * 100
 					})
+				} catch (error) {
+					await rm(archive, { force: true })
+					if (cancelation_token.isCancellationRequested) {
+						throw new vscode.CancellationError()
+					}
+					throw error
+				}
 
 				if (validate) {
 					progress.report({
 						message: "Validating checksum",
 						increment: -1000
 					})
-					const sum = await get_sum_for_sdk(
-						url,
-						abort_signal(cancelation_token)
-					)
+					const sum = await get_sum_for_sdk(url, signal)
 
 					if (sum) {
-						const hash = await get_md5_hash(file.fsPath)
+						const hash = await get_md5_hash(archive)
 
 						if (hash !== sum) {
-							await rm(file.fsPath, { force: true })
+							await rm(archive, { force: true })
 							throw new ChecksumError(
-								`checksum mismatch for ${file.fsPath}: expected ${sum}, got ${hash}`
+								`checksum mismatch for ${archive}: expected ${sum}, got ${hash}`
 							)
 						}
 					} else {
@@ -256,7 +320,7 @@ export async function download_sdk(
 					message: "Extracting archive",
 					increment: -1000
 				})
-				const sdk_path = await unpack_sdk_archive(file.fsPath, sdk_name)
+				const sdk_path = await unpack_sdk_archive(archive, sdk_name)
 
 				return sdk_path
 			}
@@ -296,11 +360,16 @@ async function unpack_sdk_archive(archive_path: string, sdk_name: string) {
 export async function list_downloaded_sdks(
 	context: ExtensionContext
 ): Promise<string[]> {
-	const file_downloader: FileDownloader = await getApi()
-	const sdk_uris = await file_downloader.listDownloadedItems(context)
-	const sdk_paths = sdk_uris.map((uri) => uri.fsPath)
+	const dir = await sdk_storage_dir(context)
+	const names = await readdir(dir).catch((error: NodeJS.ErrnoException) => {
+		if (error.code === "ENOENT") return []
+		throw error
+	})
 
-	return p_filter(sdk_paths, path_is_sdk)
+	return p_filter(
+		names.map((name) => join(dir, name)),
+		path_is_sdk
+	)
 }
 
 export async function get_downloaded_sdk(
@@ -315,16 +384,14 @@ export async function uninstall_sdk(
 	sdk_path: string,
 	context: ExtensionContext
 ): Promise<void> {
-	const file_downloader: FileDownloader = await getApi()
-	const sdk_uris = await file_downloader.listDownloadedItems(context)
-	const sdk_uri = sdk_uris.find((uri) => uri.fsPath === sdk_path)
+	const downloaded = await list_downloaded_sdks(context)
 
-	if (!sdk_uri) {
+	if (!downloaded.includes(sdk_path)) {
 		throw new Error(`SDK not found at path: ${sdk_path}`)
 	}
 
 	try {
-		await rm(sdk_uri.fsPath, { recursive: true, force: true })
+		await rm(sdk_path, { recursive: true, force: true })
 		vscode.window.showInformationMessage(
 			`Ren'Py SDK at ${basename(sdk_path)} uninstalled`
 		)

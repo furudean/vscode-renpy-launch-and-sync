@@ -27,9 +27,6 @@
 	],
 	"type": "commonjs",
 	"main": "./dist/extension.js",
-	"extensionDependencies": [
-		"mindaro-dev.file-downloader"
-	],
 	"scripts": {
 		"vscode:prepublish": "node esbuild.js --production",
 		"publish": "echo 'use `npm run publish:vsce` or `npm run publish:ovsx` instead'",
@@ -67,7 +64,6 @@
 		"typescript-eslint": "^8.8.0"
 	},
 	"dependencies": {
-		"@microsoft/vscode-file-downloader-api": "^1.0.1",
 		"@vscode/debugadapter": "^1.68.0",
 		"@vscode/debugprotocol": "^1.68.0",
 		"adm-zip": "^0.6.1",
