@@ -871,7 +871,7 @@ def socket_service(path, version, checksum):
         global _warp_generation
         _warp_generation = None
 
-        logger.info(f"connected to renpy warp socket server on {path}")
+        logger.info(f"connected to socket server {path}")
         py_exec('renpy.notify("Connected to Ren\'Py Launch and Sync")')
 
         stop = False
