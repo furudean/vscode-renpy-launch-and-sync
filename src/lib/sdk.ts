@@ -16,7 +16,7 @@ import {
 	list_downloaded_sdks,
 	uninstall_sdk
 } from "./download"
-import { get_executable, get_version } from "./sh"
+import { get_executable, get_version, RenpyVersion } from "./sh"
 import {
 	fetch_release_list,
 	list_nightly_sdks,
@@ -195,6 +195,74 @@ async function fetch_remote_sdk_catalog(
 	}
 }
 
+let catalog_refresh: Promise<RemoteSdkCatalog | undefined> | undefined
+
+function refresh_remote_catalog(
+	context: vscode.ExtensionContext
+): Promise<RemoteSdkCatalog | undefined> {
+	catalog_refresh ??= fetch_remote_sdk_catalog(context).then((catalog) => {
+		if (!catalog) catalog_refresh = undefined
+		return catalog
+	})
+	return catalog_refresh
+}
+
+export async function is_known_version(
+	name: string,
+	context: vscode.ExtensionContext
+): Promise<boolean | undefined> {
+	const has = (catalog: RemoteSdkCatalog) =>
+		[...catalog.all_valid_sdks, ...catalog.nightly_sdks].some(
+			(sdk) => sdk.name === name
+		)
+
+	load_cached_remote_catalog(context)
+	if (cached_remote_catalog && has(cached_remote_catalog)) return true
+
+	await refresh_remote_catalog(context)
+
+	return cached_remote_catalog ? has(cached_remote_catalog) : undefined
+}
+
+export interface KnownVersion {
+	name: string
+	nightly: boolean
+	downloaded: boolean
+}
+
+export async function list_known_versions(
+	context: vscode.ExtensionContext
+): Promise<KnownVersion[]> {
+	load_cached_remote_catalog(context)
+	const catalog =
+		cached_remote_catalog ?? (await refresh_remote_catalog(context))
+	const downloaded = new Set(
+		(await list_downloaded_sdks(context)).map((p) => basename(p))
+	)
+
+	const versions = [
+		...(catalog?.all_valid_sdks ?? []).map((sdk) => ({
+			name: sdk.name,
+			nightly: false
+		})),
+		...(catalog?.nightly_sdks ?? []).map((sdk) => ({
+			name: sdk.name,
+			nightly: true
+		}))
+	]
+
+	const listed = new Set(versions.map((v) => v.name))
+	const unlisted = [...downloaded]
+		.filter((name) => !listed.has(name))
+		.sort(semver_compare)
+		.map((name) => ({ name, nightly: name.includes("+nightly") }))
+
+	return [...versions, ...unlisted].map((v) => ({
+		...v,
+		downloaded: downloaded.has(v.name)
+	}))
+}
+
 /**
  * drops unsupported (pre-7.0) versions and collapses each minor version down
  * to its highest patch
@@ -333,6 +401,50 @@ export async function get_sdk_path(
 	}
 
 	return resolved
+}
+
+export type ProjectSdk =
+	/** resolved to an sdk with a working executable */
+	| { kind: "installed"; path: string; version: RenpyVersion; source?: string }
+	/** the version file names a version that isn't downloaded */
+	| { kind: "named"; name: string; source?: string }
+	/** the version file names a path that isn't an sdk */
+	| { kind: "invalid"; path: string; source?: string }
+	| { kind: "none" }
+
+export async function resolve_project_sdk(
+	context: vscode.ExtensionContext,
+	project_root?: string,
+	precomputed?: { version_file?: string; raw_value?: string }
+): Promise<ProjectSdk> {
+	const { version_file, raw_value } =
+		precomputed ?? (await get_version_file_raw_value(project_root))
+	const source = version_file
+		? vscode.workspace.asRelativePath(version_file)
+		: undefined
+
+	const sdk_path = await get_sdk_path(context, false, project_root, {
+		version_file,
+		raw_value
+	})
+	const executable = sdk_path ? await get_executable(sdk_path) : undefined
+
+	if (sdk_path && executable) {
+		return {
+			kind: "installed",
+			path: sdk_path,
+			version: await get_version(executable),
+			source
+		}
+	}
+
+	if (raw_value && is_explicit_path(raw_value)) {
+		return { kind: "invalid", path: raw_value, source }
+	}
+
+	if (raw_value) return { kind: "named", name: raw_value, source }
+
+	return { kind: "none" }
 }
 
 export async function prompt_sdk_quick_pick(

@@ -2,25 +2,13 @@ import * as vscode from "vscode"
 import path from "upath"
 import { get_config } from "./config"
 import { get_logger } from "./log"
-import {
-	find_project_root,
-	get_executable,
-	get_version,
-	RenpyVersion
-} from "./sh"
+import { find_project_root } from "./sh"
 import tildify from "tildify"
-import { get_sdk_path, get_version_file_raw_value } from "./sdk"
-import { is_explicit_path, shrink_path } from "./path"
+import { ProjectSdk, resolve_project_sdk } from "./sdk"
+import { shrink_path } from "./path"
 import { direction_info, FollowCursorDirection } from "./follow_cursor"
 
 const logger = get_logger()
-
-type ProjectSdk =
-	/** resolved to an sdk with a working executable */
-	| { kind: "installed"; path: string; version: RenpyVersion; source?: string }
-	/** the version file names a version that isn't downloaded */
-	| { kind: "named"; name: string; source?: string }
-	| { kind: "none" }
 
 function active_project_root(): string | undefined {
 	const document = vscode.window.activeTextEditor?.document
@@ -173,7 +161,7 @@ export class StatusBar {
 		const generation = ++this.sdk_generation
 		const project_root = active_project_root()
 
-		this.resolve_sdk(project_root)
+		resolve_project_sdk(this.context, project_root)
 			.then((sdk) => {
 				// a newer refresh started, possibly for another editor
 				if (generation !== this.sdk_generation) return
@@ -183,37 +171,6 @@ export class StatusBar {
 				this.render()
 			})
 			.catch((err) => logger.error("failed to update status bar:", err))
-	}
-
-	private async resolve_sdk(
-		project_root: string | undefined
-	): Promise<ProjectSdk> {
-		const { version_file, raw_value } =
-			await get_version_file_raw_value(project_root)
-		const source = version_file
-			? vscode.workspace.asRelativePath(version_file)
-			: undefined
-
-		const sdk_path = await get_sdk_path(this.context, false, project_root, {
-			version_file,
-			raw_value
-		})
-		const executable = sdk_path ? await get_executable(sdk_path) : undefined
-
-		if (sdk_path && executable) {
-			return {
-				kind: "installed",
-				path: sdk_path,
-				version: await get_version(executable),
-				source
-			}
-		}
-
-		if (raw_value && !is_explicit_path(raw_value)) {
-			return { kind: "named", name: raw_value, source }
-		}
-
-		return { kind: "none" }
 	}
 
 	private render() {
@@ -315,6 +272,7 @@ export class StatusBar {
 				)
 				break
 
+			case "invalid":
 			case "none":
 				this.sdk_bar.hide()
 				return

@@ -166,6 +166,24 @@
 					"light": "editor.inactiveSelectionBackground",
 					"highContrast": "editor.inactiveSelectionBackground"
 				}
+			},
+			{
+				"id": "renpyWarp.versionValidForeground",
+				"description": "Status after a valid .renpy-version value",
+				"defaults": {
+					"dark": "charts.green",
+					"light": "charts.green",
+					"highContrast": "charts.green"
+				}
+			},
+			{
+				"id": "renpyWarp.versionInvalidForeground",
+				"description": "Status after an invalid .renpy-version value",
+				"defaults": {
+					"dark": "editorError.foreground",
+					"light": "editorError.foreground",
+					"highContrast": "editorError.foreground"
+				}
 			}
 		],
 		"icons": {

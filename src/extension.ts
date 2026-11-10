@@ -19,6 +19,7 @@ import {
 } from "./lib/download"
 import { launch_renpy } from "./lib/launch"
 import { register_debugger } from "./lib/debug"
+import { VersionFileAnnotations } from "./lib/version_file"
 
 const logger = get_logger()
 
@@ -48,6 +49,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 	init_config_cache(context)
 
 	const status_bar = new StatusBar(context)
+	const version_annotations = new VersionFileAnnotations(context)
 	const follow_cursor = new FollowCursorService({ context, status_bar })
 	const pm = new ProcessManager()
 	const ds = new DecorationService({ context })
@@ -58,7 +60,14 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		context
 	})
 
-	context.subscriptions.push(pm, follow_cursor, status_bar, ds, wss)
+	context.subscriptions.push(
+		pm,
+		follow_cursor,
+		status_bar,
+		version_annotations,
+		ds,
+		wss
+	)
 
 	function sync_process_count() {
 		vscode.commands.executeCommand(
@@ -67,6 +76,8 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 			pm.length
 		)
 		status_bar.update(() => ({ running_processes: pm.length }))
+
+		version_annotations.refresh()
 	}
 
 	let pm_init = false
