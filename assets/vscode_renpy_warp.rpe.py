@@ -926,7 +926,7 @@ def start_renpy_warp_service():
         renpy_warp_thread = threading.Thread(target=try_endpoints_forever, daemon=True)
         renpy_warp_thread.start()
 
-        logger.info("looking for warp server")
+        logger.info("looking for socket server")
 
 
 def declassify():
