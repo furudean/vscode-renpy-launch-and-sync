@@ -862,7 +862,7 @@ def socket_service(path, version, checksum):
 
             reloading = isinstance(sys.exc_info()[1], renpy.game.UtterRestartException)
 
-            logger.info(f"closing socket connection {path}")
+            logger.info("closing socket connection")
             connection.close(reconnect=reloading)
 
         renpy.config.quit_callbacks.append(renpy_warp_quit_callback)
@@ -886,9 +886,9 @@ def socket_service(path, version, checksum):
             renpy.config.quit_action = original_quit_action
 
         if stop and not quitting:
-            logger.info("server asked not to reconnect, service exiting")
+            logger.debug("server asked not to reconnect, service exiting")
         else:
-            logger.info(f"socket service on {path} exited")
+            logger.debug("socket service exited")
 
         if not quitting:
             py_exec('renpy.notify("Disconnected from Ren\'Py Launch and Sync")')
@@ -909,7 +909,7 @@ def try_endpoints_forever():
                 stop = False
 
             if stop:
-                logger.info("service closed")
+                logger.debug("service closed")
                 return
 
         logger.debug(
