@@ -14,4 +14,9 @@ src/**
 tsconfig.json
 esbuild.js
 eslint.config.mjs
-node_modules/**/*.md
+.mypy_cache/**
+.ruff_cache/**
+**/__pycache__/**
+node_modules/**
+release.sh
+docs/**
