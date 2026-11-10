@@ -1,10 +1,20 @@
-import { JSDOM } from "jsdom"
 import { SemVer, parse as semver_parse } from "semver"
 
 export interface RemoteSdk {
 	name: string
 	url: URL
 	semver: SemVer | null
+}
+
+interface Link {
+	href: string
+	text: string
+}
+
+function find_links(html: string): Link[] {
+	const anchors = html.matchAll(/<a\s[^>]*?href="([^"]*)"[^>]*>(.*?)<\/a>/gs)
+
+	return Array.from(anchors, ([, href, text]) => ({ href, text: text.trim() }))
 }
 
 async function fetch_and_parse_nginx_directory(
@@ -19,11 +29,9 @@ async function fetch_and_parse_nginx_directory(
 	}
 	const text = await request.text()
 
-	const { document } = new JSDOM(text).window
+	const links = find_links(text)
 
-	const anchors = Array.from(document.querySelectorAll("a").values())
-
-	return anchors.map((a) => new URL(a.href, url)).slice(1) // first anchor is the parent directory link
+	return links.map((link) => new URL(link.href, url)).slice(1) // first anchor is the parent directory link
 }
 
 function fix_broken_semver(name: string): string {
@@ -86,12 +94,10 @@ export async function fetch_release_list(
 	}
 	const text = await request.text()
 
-	const { document } = new JSDOM(text).window
-
 	const releases = new Set<string>()
 
-	for (const a of Array.from(document.querySelectorAll("table td a"))) {
-		const version = a.getAttribute("href")?.match(/^\/release\/([^/]+)$/)?.[1]
+	for (const link of find_links(text)) {
+		const version = link.href.match(/^\/release\/([^/]+)$/)?.[1]
 		if (version) releases.add(decodeURIComponent(version))
 	}
 
@@ -133,32 +139,15 @@ export async function list_nightly_sdks(
 	}
 	const text = await request.text()
 
-	const { document } = new JSDOM(text).window
-
-	const tr = Array.from(
-		document.querySelectorAll("table tr")
-	) as HTMLTableRowElement[]
-
-	function map_row(tr: HTMLTableRowElement): RemoteSdk[] {
-		const cols = Array.from(tr.querySelectorAll("td"))
-		const cols_with_versions = cols.slice(1)
-
-		const mapped = cols_with_versions.flatMap((c): RemoteSdk | undefined => {
-			const a = c.querySelector("a")
-
-			if (!a) return
-
-			return {
-				name: a.text,
-				url: new URL(a.href, NIGHTLY_INDEX_URL),
-				semver: semver_parse(fix_broken_semver(a.text))
-			}
-		})
-
-		return mapped.filter(Boolean) as RemoteSdk[]
-	}
-
-	const versions = tr.slice(3).flatMap(map_row).sort(sort_remote_sdks)
+	// the permalink and documentation links share the table with the builds
+	const versions = find_links(text)
+		.filter((link) => link.text.includes("+nightly"))
+		.map((link) => ({
+			name: link.text,
+			url: new URL(link.href, NIGHTLY_INDEX_URL),
+			semver: semver_parse(fix_broken_semver(link.text))
+		}))
+		.sort(sort_remote_sdks)
 
 	return versions
 }
@@ -193,20 +182,10 @@ export async function find_sdk_in_nightly_index(
 	}
 	const text = await request.text()
 
-	const { document } = new JSDOM(text).window
-
-	const table = document.querySelector("table")
-
-	if (!table) {
-		throw new Error(`unexpected html in ${url}`)
-	}
-
-	const anchors = Array.from(table.querySelectorAll("a").values())
-
 	const base = new URL(url)
 	if (!base.pathname.endsWith("/")) base.pathname += "/"
 
-	const dir = anchors.map((a) => new URL(a.href, base))
+	const dir = find_links(text).map((link) => new URL(link.href, base))
 
 	const sdk = dir.find((url) => url.pathname.endsWith("-sdk.zip"))
 

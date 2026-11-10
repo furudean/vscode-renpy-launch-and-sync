@@ -34,7 +34,7 @@ async function main() {
 		sourcesContent: false,
 		platform: "node",
 		outfile: "dist/extension.js",
-		external: ["vscode", "jsdom"],
+		external: ["vscode"],
 		logLevel: "silent",
 		plugins: [
 			copy({
