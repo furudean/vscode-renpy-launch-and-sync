@@ -1,3 +1,4 @@
+const fs = require("node:fs")
 const { context } = require("esbuild")
 const { copy } = require("esbuild-plugin-copy")
 
@@ -25,6 +26,8 @@ const esbuildProblemMatcherPlugin = {
 }
 
 async function main() {
+	fs.rmSync("dist", { recursive: true, force: true })
+
 	const ctx = await context({
 		entryPoints: ["src/extension.ts"],
 		bundle: true,

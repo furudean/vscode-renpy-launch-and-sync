@@ -20,3 +20,6 @@ eslint.config.mjs
 node_modules/**
 release.sh
 docs/**
+.git-blame-ignore-revs
+.prettierignore
+assets/**
