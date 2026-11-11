@@ -18,7 +18,8 @@ import {
 } from "./download"
 import { get_executable, get_version, RenpyVersion } from "./sh"
 import {
-	fetch_release_list,
+	drop_unreleased,
+	fetch_stable_version,
 	list_nightly_sdks,
 	list_remote_sdks,
 	RemoteSdk,
@@ -156,11 +157,11 @@ async function fetch_remote_sdk_catalog(
 	context: vscode.ExtensionContext
 ): Promise<RemoteSdkCatalog | undefined> {
 	try {
-		const [remote_sdks, nightly_sdks, releases] = await Promise.all([
+		const [remote_sdks, nightly_sdks, stable_version] = await Promise.all([
 			list_remote_sdks(),
 			list_nightly_sdks(),
-			fetch_release_list().catch((error) => {
-				logger.warn("failed to fetch ren'py release list:", error)
+			fetch_stable_version().catch((error) => {
+				logger.warn("failed to fetch stable ren'py version:", error)
 				return undefined
 			})
 		])
@@ -171,10 +172,10 @@ async function fetch_remote_sdk_catalog(
 		// the non-sdk directories (android, tmp...)
 		const all_valid_sdks = remote_sdks.filter((sdk) => sdk.semver)
 
-		// /dl/ also holds prereleases and stray nightlies - keep those out of
-		// the collapsed view
-		const final_sdks = releases
-			? all_valid_sdks.filter((sdk) => releases.has(sdk.name))
+		// prereleases newer than the stable version stay out of the collapsed
+		// view
+		const final_sdks = stable_version
+			? drop_unreleased(all_valid_sdks, stable_version)
 			: all_valid_sdks
 
 		const filtered_sdks =

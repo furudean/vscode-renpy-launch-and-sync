@@ -3,7 +3,6 @@ import assert from "node:assert/strict"
 import { readFile } from "node:fs/promises"
 import { join } from "node:path"
 import {
-	fetch_release_list,
 	find_sdk_in_nginx_dir,
 	find_sdk_in_nightly_index,
 	get_sum_for_sdk,
@@ -24,7 +23,6 @@ const fixtures = join(
 // snapshots of the pages the extension scrapes, keyed by url
 const pages: Record<string, string> = {
 	"https://renpy.org/dl/": "dl.html",
-	"https://www.renpy.org/release_list.html": "release_list.html",
 	"https://renpy.org/dl/8.5.3/": "dl-8.5.3.html",
 	"https://renpy.org/dl/8.5.3/checksums.txt": "checksums.txt",
 	"https://nightly.renpy.org/": "nightly.html",
@@ -120,24 +118,6 @@ describe("remote sdk index", () => {
 		)
 
 		assert.equal(sum, undefined)
-	})
-})
-
-describe("fetch_release_list", () => {
-	beforeEach(() => {
-		mock.method(globalThis, "fetch", fake_fetch)
-	})
-	afterEach(() => {
-		mock.restoreAll()
-	})
-
-	test("lists final releases only", async () => {
-		const releases = await fetch_release_list()
-
-		assert.ok(releases.has("8.5.3"))
-		assert.ok(releases.has("7.8.7"))
-		assert.ok(!releases.has("7.8.8.25051901+nightly"))
-		assert.ok(!releases.has("8.6.0"))
 	})
 })
 

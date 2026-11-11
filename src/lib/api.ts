@@ -78,30 +78,25 @@ export function sort_remote_sdks(a: RemoteSdk, b: RemoteSdk): number {
 	return semver_compare(a.name, b.name)
 }
 
-const RELEASE_LIST_URL = "https://www.renpy.org/release_list.html"
+interface Channels {
+	releases: { channel: string; split_version: number[] }[]
+}
 
-/**
- * scrapes the versions of all final releases from the release list
- */
-export async function fetch_release_list(
-	signal?: AbortSignal
-): Promise<Set<string>> {
-	const request = await fetch(RELEASE_LIST_URL, { signal })
-	if (!request.ok) {
-		throw new Error(
-			`${RELEASE_LIST_URL} responded with ${request.status} ${request.statusText}`
-		)
-	}
-	const text = await request.text()
+export async function fetch_stable_version(): Promise<string | undefined> {
+	const request = await fetch("https://renpy.org/channels.json")
+	if (!request.ok) return undefined
 
-	const releases = new Set<string>()
+	const { releases } = (await request.json()) as Channels
+	const release = releases.find((c) => c.channel === "Release")
 
-	for (const link of find_links(text)) {
-		const version = link.href.match(/^\/release\/([^/]+)$/)?.[1]
-		if (version) releases.add(decodeURIComponent(version))
-	}
+	return release?.split_version.slice(0, 3).join(".")
+}
 
-	return releases
+export function drop_unreleased(
+	sdks: RemoteSdk[],
+	stable_version: string
+): RemoteSdk[] {
+	return sdks.filter((sdk) => semver_compare(sdk.name, stable_version) >= 0)
 }
 
 export async function list_remote_sdks(

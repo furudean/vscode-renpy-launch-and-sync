@@ -6,11 +6,7 @@ All notable changes to this project will be documented in this file.
 
 ### SDK management
 
-- The SDK picker now takes final releases from the
-  [Ren'Py release list](https://www.renpy.org/release_list.html) instead of
-  hiding versions newer than the current stable release, and lists only those
-  until _Show all versions_ is selected
-- _Show all versions_ now includes prereleases, such as Ren'Py 8.6.0
+- _Show all versions_ now includes prereleases
 - The selected SDK is always shown at the top of the picker, rather than
   wherever it falls in the list
 - Fixed the SDK picker not showing a selected version that has not been
