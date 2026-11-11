@@ -12,7 +12,7 @@ All notable changes to this project will be documented in this file.
 - Fixed the SDK picker not showing a selected version that has not been
   downloaded yet
 - Change how nightly string is shown in SDK picker
-- Remove special color on status bar item when following cursor
+- Remove special color on _Follow Cursor_ menu item
 - The extension no longer requires mindaro-dev.file-downloader.
 - .renpy-version files now show whether the saved value is a valid SDK, and
   autocomplete version names
