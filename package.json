@@ -415,6 +415,12 @@
 					"order": 3,
 					"markdownDescription": "Show a gutter icon on the line Ren'Py is on"
 				},
+				"renpyWarp.showNotify": {
+					"type": "boolean",
+					"default": true,
+					"order": 3,
+					"markdownDescription": "Show a notification in the game when it connects to or disconnects from the extension"
+				},
 				"renpyWarp.exclude": {
 					"type": "array",
 					"markdownDescription": "Additional [VSCode glob patterns](https://code.visualstudio.com/docs/editor/glob-patterns) to exclude when searching for Ren'Py projects. These are relative to your workspace.\n\nAutomatically includes `#files.exclude#`.",

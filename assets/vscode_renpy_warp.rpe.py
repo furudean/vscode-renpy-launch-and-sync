@@ -654,12 +654,15 @@ def begin_next_checkpoint():
     renpy.exports.end_interaction(True)
 
 
-_pending_status = None
+pending_status = None
+show_notify = True
 
 
 def notify_status(message):
-    global _pending_status
-    _pending_status = message
+    global pending_status
+
+    if show_notify:
+        pending_status = message
 
 
 def in_start():
@@ -680,12 +683,12 @@ def in_start():
 
 
 def show_pending_status():
-    global _pending_status
+    global pending_status
 
-    if _pending_status is None or in_start():
+    if pending_status is None or in_start():
         return
 
-    message, _pending_status = _pending_status, None
+    message, pending_status = pending_status, None
 
     if renpy.session.get("_warp_status") == message:
         return
@@ -893,6 +896,9 @@ def socket_service(path, version, checksum):
         if not isinstance(reply, dict) or reply.get("type") != "welcome":
             logger.warning(f"expected welcome, got {reply!r}")
             return False
+
+        global show_notify
+        show_notify = reply.get("notify", True)
 
         quitting = False
 

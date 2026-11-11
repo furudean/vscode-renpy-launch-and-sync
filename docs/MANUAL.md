@@ -306,6 +306,9 @@ extension passes it to Ren'Py as `RENPY_EDIT_PY`.
 The RPE also turns on autoreload through `renpy.set_autoreload` when
 `renpyWarp.setAutoReloadOnSave` is enabled.
 
+The game shows a notification when it connects to or disconnects from the
+extension. You can disable this with `renpyWarp.showNotify`.
+
 ## Files the extension writes
 
 The extension writes files in your project in order to provide functionality.

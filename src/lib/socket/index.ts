@@ -310,7 +310,10 @@ export class WarpSocketService {
 					if (!connection.open) return
 
 					this.handle_socket_connection(connection, client)
-					await connection.send({ type: "welcome" })
+					await connection.send({
+						type: "welcome",
+						notify: get_config("showNotify") !== false
+					})
 				})
 				.catch((error) => {
 					logger.error("socket handshake failed:", error)

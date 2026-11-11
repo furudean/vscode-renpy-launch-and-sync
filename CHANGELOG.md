@@ -17,6 +17,12 @@ All notable changes to this project will be documented in this file.
 - .renpy-version files now show whether the saved value is a valid SDK, and
   autocomplete version names
 
+### Other changes
+
+- Added `renpyWarp.showNotify` to turn off the notifications Ren'Py
+  shows when a game connects or disconnects
+  ([#129](https://github.com/furudean/vscode-renpy-launch-and-sync/issues/129))
+
 ### Fixes
 
 - No longer shows the _Connected_ notification after every script reload, only
