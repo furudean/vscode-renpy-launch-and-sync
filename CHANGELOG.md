@@ -17,6 +17,12 @@ All notable changes to this project will be documented in this file.
 - .renpy-version files now show whether the saved value is a valid SDK, and
   autocomplete version names
 
+### Fixes
+
+- No longer shows the _Connected_ notification after every script reload, only
+  when the connection status actually changes
+  ([#129](https://github.com/furudean/vscode-renpy-launch-and-sync/issues/129))
+
 ## 5.0.0 - 2026-11-04
 
 ### Debugger

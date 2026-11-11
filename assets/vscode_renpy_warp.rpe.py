@@ -654,6 +654,46 @@ def begin_next_checkpoint():
     renpy.exports.end_interaction(True)
 
 
+_pending_status = None
+
+
+def notify_status(message):
+    global _pending_status
+    _pending_status = message
+
+
+def in_start():
+    if renpy.exports.context()._menu:
+        return False
+
+    namemap = renpy.game.script.namemap
+    start_file = namemap["_start"].filename
+    context = renpy.game.context()
+
+    for name in [context.current, *context.return_stack]:
+        node = namemap.get(name, None)
+
+        if node is not None and node.filename == start_file:
+            return True
+
+    return False
+
+
+def show_pending_status():
+    global _pending_status
+
+    if _pending_status is None or in_start():
+        return
+
+    message, _pending_status = _pending_status, None
+
+    if renpy.session.get("_warp_status") == message:
+        return
+
+    renpy.session["_warp_status"] = message
+    renpy.exports.notify(message)
+
+
 def socket_send(message, connection):
     """sends a message to the socket server"""
     connection.send(message)
@@ -872,7 +912,7 @@ def socket_service(path, version, checksum):
         _warp_generation = None
 
         logger.info(f"connected to socket server {path}")
-        py_exec('renpy.notify("Connected to Ren\'Py Launch and Sync")')
+        notify_status("Connected to Ren'Py Launch and Sync")
 
         stop = False
 
@@ -891,7 +931,7 @@ def socket_service(path, version, checksum):
             logger.debug("socket service exited")
 
         if not quitting:
-            py_exec('renpy.notify("Disconnected from Ren\'Py Launch and Sync")')
+            notify_status("Disconnected from Ren'Py Launch and Sync")
 
         return stop
 
@@ -922,6 +962,8 @@ def start_renpy_warp_service():
     if renpy.config.developer:
         if own_main_thread_queue():
             renpy.config.periodic_callbacks.append(drain_main_thread_queue)
+
+        renpy.config.periodic_callbacks.append(show_pending_status)
 
         renpy_warp_thread = threading.Thread(target=try_endpoints_forever, daemon=True)
         renpy_warp_thread.start()
