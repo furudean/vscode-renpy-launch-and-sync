@@ -1,6 +1,6 @@
-const fs = require("node:fs")
-const { context } = require("esbuild")
-const { copy } = require("esbuild-plugin-copy")
+import fs from "node:fs"
+import { context } from "esbuild"
+import { copy } from "esbuild-plugin-copy"
 
 const production = process.argv.includes("--production")
 const watch = process.argv.includes("--watch")
@@ -31,7 +31,13 @@ async function main() {
 	const ctx = await context({
 		entryPoints: ["src/extension.ts"],
 		bundle: true,
-		format: "cjs",
+		format: "esm",
+
+		// bundled commonjs dependencies call require() on node builtins
+		banner: {
+			js: 'import { createRequire as __createRequire } from "node:module"; const require = __createRequire(import.meta.url);'
+		},
+
 		minify: production,
 		sourcemap: !production,
 		sourcesContent: false,

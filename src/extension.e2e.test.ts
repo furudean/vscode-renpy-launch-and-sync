@@ -1,17 +1,17 @@
-type ExtensionApi = import("./extension").ExtensionApi
-type AnyProcess = import("./lib/process").AnyProcess
-type ManagedProcess = import("./lib/process").ManagedProcess
-type DebugSession = import("vscode").DebugSession
+import assert from "node:assert"
+import path from "node:path"
+import fs from "node:fs/promises"
+import http from "node:http"
+import type { AddressInfo } from "node:net"
+import child_process from "node:child_process"
+import { createHash } from "node:crypto"
+import AdmZip from "adm-zip"
+import semver from "semver"
+import * as vscode from "vscode"
+import type { ExtensionApi } from "./extension"
+import type { AnyProcess, ManagedProcess } from "./lib/process"
 
-const assert: typeof import("node:assert") = require("node:assert")
-const path: typeof import("node:path") = require("node:path")
-const fs: typeof import("node:fs/promises") = require("node:fs/promises")
-const http: typeof import("node:http") = require("node:http")
-const child_process: typeof import("node:child_process") = require("node:child_process")
-const { createHash }: typeof import("node:crypto") = require("node:crypto")
-const AdmZip: typeof import("adm-zip") = require("adm-zip")
-const semver: typeof import("semver") = require("semver")
-const vscode: typeof import("vscode") = require("vscode")
+type DebugSession = vscode.DebugSession
 
 // the sdk the game tests run against. .vscode-test.mjs has already fetched
 // the archive into the cache dir, and a server in this process hands it to
@@ -49,7 +49,7 @@ const escape_regex = (text: string) =>
  * serves the cached real sdk under /dl/<version>/ and the fake one under
  * /good/ (checksum matches) and /bad/ (checksum does not)
  */
-function serve_sdks(): Promise<import("node:http").Server> {
+function serve_sdks(): Promise<http.Server> {
 	const server = http.createServer(async (request, response) => {
 		const url = new URL(request.url!, "http://localhost")
 		const pathname = decodeURIComponent(url.pathname)
@@ -191,7 +191,7 @@ suite("renpyWarp", function () {
 	this.timeout(30_000)
 
 	let api: ExtensionApi
-	let server: import("node:http").Server
+	let server: http.Server
 	let origin: string
 	let sdk_path: string
 
@@ -207,7 +207,7 @@ suite("renpyWarp", function () {
 		api = await extension.activate()
 
 		server = await serve_sdks()
-		const address = server.address() as import("node:net").AddressInfo
+		const address = server.address() as AddressInfo
 		origin = `http://127.0.0.1:${address.port}`
 
 		// reuse an sdk a previous local run already unpacked - unzipping a
@@ -665,7 +665,7 @@ suite("renpyWarp", function () {
 		this.timeout(30_000)
 
 		const sessions = new Set<DebugSession>()
-		const listeners: import("vscode").Disposable[] = []
+		const listeners: vscode.Disposable[] = []
 
 		const folder = vscode.workspace.workspaceFolders![0]
 
@@ -924,7 +924,7 @@ suite("renpyWarp", function () {
 			// the provider directly
 			const resolved = await api.debug_provider.resolveDebugConfiguration(
 				folder,
-				{} as import("vscode").DebugConfiguration
+				{} as vscode.DebugConfiguration
 			)
 
 			assert.deepStrictEqual(resolved, {
