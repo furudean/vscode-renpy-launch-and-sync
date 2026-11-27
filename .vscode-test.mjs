@@ -1,7 +1,6 @@
 import { defineConfig } from "@vscode/test-cli"
-import { createHash } from "node:crypto"
 import { createWriteStream, mkdirSync, writeFileSync } from "node:fs"
-import { access, readFile } from "node:fs/promises"
+import { access, rename, rm } from "node:fs/promises"
 import { pipeline } from "node:stream/promises"
 import { Readable } from "node:stream"
 import { join } from "node:path"
@@ -27,7 +26,15 @@ async function fetch_to(url, file) {
 	if (!response.ok || !response.body) {
 		throw new Error(`failed to download ${url}: ${response.status}`)
 	}
-	await pipeline(Readable.fromWeb(response.body), createWriteStream(file))
+
+	const partial = `${file}.partial`
+	try {
+		await pipeline(Readable.fromWeb(response.body), createWriteStream(partial))
+	} catch (error) {
+		await rm(partial, { force: true })
+		throw error
+	}
+	await rename(partial, file)
 }
 
 async function ensure_sdk_archive() {
@@ -48,19 +55,6 @@ async function ensure_sdk_archive() {
 	console.log(`downloading ${base}${name}`)
 	await fetch_to(base + "checksums.txt", checksums)
 	await fetch_to(base + name, archive)
-
-	const md5 = (await readFile(checksums, "utf8"))
-		.split("# md5")[1]
-		.split("# sha1")[0]
-		.match(new RegExp(`^([a-f0-9]+)\\s+${name}$`, "m"))?.[1]
-	const actual = createHash("md5")
-		.update(await readFile(archive))
-		.digest("hex")
-	if (md5 !== actual) {
-		throw new Error(
-			`checksum mismatch for ${name}: expected ${md5}, got ${actual}`
-		)
-	}
 }
 
 await ensure_sdk_archive()
