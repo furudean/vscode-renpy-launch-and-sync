@@ -1018,16 +1018,29 @@ suite("renpyWarp", function () {
 		suite("stepping", function () {
 			this.timeout(30_000)
 
+			let game: AnyProcess | undefined
+
 			suiteSetup(async () => {
 				await update_config({ renpyExtensionsEnabled: "Enabled" })
 			})
 
 			suiteTeardown(async () => {
 				await api.pm.kill_all()
+				await wait_for(() => api.pm.length === 0, "the game to die")
+				await wait_for(
+					() => renpy_sessions().length === 0,
+					"the session to terminate"
+				)
 				await update_config({ renpyExtensionsEnabled: "Disabled" })
 			})
 
-			async function debugging(): Promise<{ process: AnyProcess }> {
+			async function debugging(): Promise<AnyProcess> {
+				if (game && !game.dead) {
+					// a report left over from the last test would pass for this one's
+					game.last_cursor = undefined
+					return game
+				}
+
 				const started = await vscode.debug.startDebugging(folder, {
 					type: "renpyWarp",
 					request: "launch",
@@ -1045,109 +1058,88 @@ suite("renpyWarp", function () {
 				})
 				await process.wait_for_labels(10_000)
 
-				return { process }
-			}
-
-			async function stop(process: AnyProcess): Promise<void> {
-				await api.pm.kill_all()
-				await wait_for(() => process.dead, "the game to die")
-				await wait_for(
-					() => renpy_sessions().length === 0,
-					"the session to terminate"
-				)
+				game = process
+				return process
 			}
 
 			test("next_checkpoint skips every pause in a dialogue block", async () => {
-				const { process } = await debugging()
+				const process = await debugging()
 
-				try {
-					await process.jump_to_label("pauses")
-					await wait_for(
-						() => process.last_cursor?.line === 17,
-						"ren'py to report script.rpy:17",
-						{ process }
-					)
+				await process.jump_to_label("pauses")
+				await wait_for(
+					() => process.last_cursor?.line === 17,
+					"ren'py to report script.rpy:17",
+					{ process }
+				)
 
-					await process.next_checkpoint()
+				await process.next_checkpoint()
 
-					await wait_for(
-						() => process.last_cursor?.line !== 17,
-						"ren'py to move past the paused line",
-						{ process }
-					)
-					assert.strictEqual(
-						process.last_cursor?.what,
-						"After the pauses.",
-						"next_checkpoint stopped inside the pause block"
-					)
-				} finally {
-					await stop(process)
-				}
+				await wait_for(
+					() => process.last_cursor?.line !== 17,
+					"ren'py to move past the paused line",
+					{ process }
+				)
+				assert.strictEqual(
+					process.last_cursor?.what,
+					"After the pauses.",
+					"next_checkpoint stopped inside the pause block"
+				)
 			})
 
 			test("rollback rolls back to the previous checkpoint", async () => {
-				const { process } = await debugging()
+				const process = await debugging()
 
-				try {
-					await process.jump_to_label("start")
-					await wait_for(
-						() => process.last_cursor?.line === 5,
-						"ren'py to report script.rpy:5",
-						{ process }
-					)
+				await process.jump_to_label("start")
+				await wait_for(
+					() => process.last_cursor?.line === 5,
+					"ren'py to report script.rpy:5",
+					{ process }
+				)
 
-					await process.advance()
-					await wait_for(
-						() => process.last_cursor?.line === 7,
-						"ren'py to report script.rpy:7",
-						{ process }
-					)
+				await process.advance()
+				await wait_for(
+					() => process.last_cursor?.line === 7,
+					"ren'py to report script.rpy:7",
+					{ process }
+				)
 
-					await process.rollback()
-					await wait_for(
-						() => process.last_cursor?.line === 5,
-						"ren'py to roll back to script.rpy:5",
-						{ process }
-					)
-				} finally {
-					await stop(process)
-				}
+				await process.rollback()
+				await wait_for(
+					() => process.last_cursor?.line === 5,
+					"ren'py to roll back to script.rpy:5",
+					{ process }
+				)
 			})
 
 			test("reports a console error without killing the session", async () => {
-				const { process } = await debugging()
+				await debugging()
 
-				try {
-					const session = vscode.debug.activeDebugSession
-					assert.strictEqual(session?.type, "renpyWarp")
+				const session = vscode.debug.activeDebugSession
+				assert.strictEqual(session?.type, "renpyWarp")
 
-					await assert.rejects(
-						Promise.resolve(
-							session.customRequest("evaluate", {
-								expression: "1 / 0",
-								context: "repl"
-							})
-						)
+				await assert.rejects(
+					Promise.resolve(
+						session.customRequest("evaluate", {
+							expression: "1 / 0",
+							context: "repl"
+						})
 					)
+				)
 
-					// the session survived the error, so a follow-up command still
-					// reaches the same running process
-					const result = await session.customRequest("evaluate", {
-						expression: "1 + 1",
-						context: "repl"
-					})
-					assert.strictEqual(result.result, "2")
-				} finally {
-					await stop(process)
-				}
+				// the session survived the error, so a follow-up command still
+				// reaches the same running process
+				const result = await session.customRequest("evaluate", {
+					expression: "1 + 1",
+					context: "repl"
+				})
+				assert.strictEqual(result.result, "2")
 			})
 
 			test("_return re-enables stepping immediately, without waiting on dialogue", async () => {
-				const { process } = await debugging()
+				const process = await debugging()
 				const changes: boolean[] = []
-				process.on("canStepChange", (can_step: boolean) =>
-					changes.push(can_step)
-				)
+				const on_change = (can_step: boolean) => changes.push(can_step)
+				process.on("canStepChange", on_change)
 
 				try {
 					await process.jump_to_label("pauses")
@@ -1184,7 +1176,7 @@ suite("renpyWarp", function () {
 						"_return did not immediately re-enable stepping"
 					)
 				} finally {
-					await stop(process)
+					process.off("canStepChange", on_change)
 				}
 			})
 		})
