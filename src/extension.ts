@@ -41,6 +41,7 @@ export interface ExtensionApi {
 	 * the e2e tests
 	 */
 	launch_unmanaged: () => Promise<AnyProcess | undefined>
+	ipc_path: string
 	debug_provider: RenpyDebugConfigurationProvider
 	follow_cursor: FollowCursorService
 }
@@ -213,6 +214,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		launch_unmanaged() {
 			return launch_renpy({ context, pm, wss, register: false })
 		},
+		ipc_path: wss.ipc_path,
 		debug_provider,
 		follow_cursor
 	}

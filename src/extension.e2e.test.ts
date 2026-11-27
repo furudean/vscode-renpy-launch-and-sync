@@ -1297,7 +1297,14 @@ suite("renpyWarp", function () {
 						path.join(sdk_path, "renpy.sh"),
 						project_root
 					],
-					{ env: { ...process.env, ...BASE_ENV }, stdio: "ignore" }
+					{
+						env: {
+							...process.env,
+							...BASE_ENV,
+							WARP_IPC_PATH: api.ipc_path
+						},
+						stdio: "ignore"
+					}
 				)
 
 				try {
