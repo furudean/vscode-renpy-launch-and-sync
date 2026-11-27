@@ -153,6 +153,9 @@ _Go to current Ren'Py line_ (<kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>E</kbd>, or
 your editor to the line the game is on. To do this continuously, use
 [_Follow Cursor_](#follow-cursor).
 
+If your editor driftes away from the game's line, a _Show Ren'Py_ button
+appears in the status bar that triggers this command.
+
 ### Open Visual Studio Code at line
 
 In a running game, pressing <kbd>Shift</kbd>+<kbd>E</kbd> opens the current line
