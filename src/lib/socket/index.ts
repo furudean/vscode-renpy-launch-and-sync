@@ -14,7 +14,7 @@ import { StatusBar } from "../status_bar"
 import { prompt_install_rpe, get_rpe_checksum } from "../rpe"
 import path from "upath"
 import { get_config, set_config } from "../config"
-import { find_projects_in_workspaces } from "../path"
+import { find_projects_in_workspaces, is_same_path } from "../path"
 import { FollowCursorService, sync_editor_with_renpy } from "../follow_cursor"
 import { get_executable, process_finished } from "../sh"
 import { get_sdk_path } from "../sdk"
@@ -403,8 +403,8 @@ export class WarpSocketService {
 			find_projects_in_workspaces()
 		])
 
-		const matches_any_root = project_roots.some(
-			(project_root) => path.relative(project_root, socket_project_root) === ""
+		const matches_any_root = project_roots.some((project_root) =>
+			is_same_path(project_root, socket_project_root)
 		)
 
 		if (!matches_any_root) {

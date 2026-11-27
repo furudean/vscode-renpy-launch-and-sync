@@ -674,6 +674,10 @@ export class RenpyDebugSession extends DebugSession {
 		this.rpp = rpp
 		rpp.debug_session_id = this.session.id
 
+		if (this.request === "launch") {
+			this.session.name = `${this.session.configuration.name} (pid ${rpp.pid})`
+		}
+
 		this.console(`Ren'Py pid ${rpp.pid} (${rpp.project_root})`)
 		this.console("Connected to Ren'Py console. Type help to list commands.")
 
@@ -840,11 +844,7 @@ export async function start_renpy({
 	// regardless of whether `onDidStartDebugSession` had fired yet
 	if (!session_id) return undefined
 
-	for (const rpp of pm) {
-		if (rpp.debug_session_id === session_id) return rpp
-	}
-
-	return undefined
+	return pm.find_by_debug_session(session_id)
 }
 
 /** gives a process a debug session of its own unless it already has one */

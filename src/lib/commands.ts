@@ -11,11 +11,12 @@ import { get_sdk_path, prompt_sdk_quick_pick } from "./sdk"
 import { prompt_install_rpe, uninstall_rpes } from "./rpe"
 import { get_executable } from "./sh"
 import { WarpSocketService } from "./socket"
-import { ProcessManager } from "./process"
+import { ProcessManager, active_target_process } from "./process"
 import { StatusBar } from "./status_bar"
 import {
 	FollowCursorService,
-	sync_editor_to_last_known_line
+	sync_editor_to_last_known_line,
+	sync_target
 } from "./follow_cursor"
 import { get_logger } from "./log"
 import { is_system_label } from "./label"
@@ -78,7 +79,7 @@ export function get_commands(
 				return
 			}
 
-			let process = pm.at(-1)
+			let process = active_target_process(pm)
 			const new_process = process === undefined
 
 			if (process === undefined) {
@@ -253,7 +254,7 @@ export function get_commands(
 
 				if (!pm.length) status_bar.flash_follow_cursor()
 			} else {
-				const process = pm.at(-1)
+				const process = active_target_process(pm)
 
 				if (process) {
 					await follow_cursor.catch_up(process)
@@ -273,7 +274,7 @@ export function get_commands(
 		},
 
 		"renpyWarp.syncCursorPosition": async () => {
-			const recent = pm.at(-1)
+			const recent = sync_target(pm, follow_cursor)
 
 			if (recent?.last_cursor === undefined) {
 				vscode.window.showInformationMessage(

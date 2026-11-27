@@ -1,7 +1,7 @@
 import { test, describe } from "node:test"
 import assert from "node:assert/strict"
 import { sep } from "node:path"
-import { shrink_path } from "./path.ts"
+import { is_same_path, shrink_path } from "./path.ts"
 
 function native(unix_path: string): string {
 	return unix_path.split("/").join(sep)
@@ -48,5 +48,17 @@ describe("shorten_path", () => {
 			shrink_path("C:\\Users\\someone\\Downloads\\renpy-sdk", 30),
 			["C:", "Users", "som..", "Dow..", "renpy-sdk"].join(sep)
 		)
+	})
+})
+
+describe("is_same_path", () => {
+	test("matches however the path is spelled", () => {
+		assert.equal(is_same_path("/a/b", "/a/b/"), true)
+		assert.equal(is_same_path("/a/b", "/a/c/../b"), true)
+	})
+
+	test("tells a project from one nested inside it", () => {
+		assert.equal(is_same_path("/a/b", "/a/b/other"), false)
+		assert.equal(is_same_path("/a/b/other", "/a/b"), false)
 	})
 })

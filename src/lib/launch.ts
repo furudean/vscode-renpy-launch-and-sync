@@ -3,7 +3,12 @@ import path from "upath"
 import child_process from "child_process"
 import fs from "node:fs/promises"
 
-import { ProcessManager, ManagedProcess, AnyProcess } from "./process"
+import {
+	ProcessManager,
+	ManagedProcess,
+	AnyProcess,
+	target_process
+} from "./process"
 import { get_config } from "./config"
 import { get_logger } from "./log"
 import {
@@ -60,13 +65,15 @@ export async function warp_game({
 
 	if (!project_root) return undefined
 
+	const rpp = target_process(pm, project_root)
+	if (!rpp) return undefined
+
 	logger.info("warping in existing window")
 
 	const filename_relative = path.relative(
 		path.join(project_root, "game/"),
 		file
 	)
-	const rpp = pm.at(-1) as AnyProcess
 
 	await rpp.warp_to_line(filename_relative, line + 1)
 

@@ -8,6 +8,12 @@ All notable changes to this project will be documented in this file.
 - Added a _Show Ren'Py_ button to the status bar,
   which runs `renpyWarp.syncCursorPosition`. It shows when the editor
   has drifted away from Ren'Py's current line.
+- With several games open, commands now go to the game selected in the debug
+  toolbar, rather than whichever opened last.
+- Fixed _Warp to Line_ and _Follow Cursor_ sending warps to a game running a
+  different project.
+- Launched debug sessions now include their pid in the name, e.g.
+  _Launch Ren'Py project (pid 12345)_, so several games can be told apart.
 
 ## 5.1.0 - 2026-11-10
 

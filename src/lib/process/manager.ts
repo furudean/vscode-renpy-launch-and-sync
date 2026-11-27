@@ -55,8 +55,25 @@ export class ProcessManager {
 		}
 	}
 
-	at(index: number): AnyProcess | undefined {
-		return Array.from(this).at(index)
+	find_by_debug_session(session_id: string): AnyProcess | undefined {
+		for (const process of this) {
+			if (process.debug_session_id === session_id) return process
+		}
+
+		return undefined
+	}
+
+	newest(
+		predicate: (process: AnyProcess) => boolean = () => true
+	): AnyProcess | undefined {
+		let newest: AnyProcess | undefined
+
+		// a map iterates in insertion order
+		for (const process of this) {
+			if (predicate(process)) newest = process
+		}
+
+		return newest
 	}
 
 	async kill_all() {

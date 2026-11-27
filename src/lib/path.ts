@@ -17,6 +17,10 @@ export function is_explicit_path(value: string): boolean {
 	return path.isAbsolute(untildify(value))
 }
 
+export function is_same_path(a: string, b: string): boolean {
+	return path.relative(a, b) === ""
+}
+
 export async function path_exists(path: string): Promise<boolean> {
 	try {
 		await fs.access(path, fs.constants.F_OK)

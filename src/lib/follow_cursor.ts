@@ -1,9 +1,10 @@
 import * as vscode from "vscode"
 import { get_config } from "./config"
-import { AnyProcess } from "./process"
+import { AnyProcess, ProcessManager, target_process } from "./process"
 import { get_logger } from "./log"
 import path from "upath"
 import { find_project_root } from "./sh"
+import { is_same_path } from "./path"
 import type { StatusBar } from "./status_bar"
 import { DialogueRange, said_range, SaidRange } from "./dialogue"
 import { cursor_selection, dialogue_range } from "./mark"
@@ -272,7 +273,7 @@ export async function warp_renpy_to_cursor(
 
 	const project_root = find_project_root(file)
 
-	if (!project_root) return
+	if (!project_root || !is_same_path(rp.project_root, project_root)) return
 
 	const target = warp_target(get_statements(editor.document), line)
 
@@ -314,6 +315,13 @@ export async function warp_renpy_to_cursor(
 	await rp.warp_to_line(filename_relative, target.warp_line + 1)
 	status_bar.notify(`$(debug-line-by-line) Warped to ${warp_spec}`)
 	logger.info("warped to", warp_spec)
+}
+
+export function sync_target(
+	pm: ProcessManager,
+	follow_cursor: FollowCursorService
+): AnyProcess | undefined {
+	return follow_cursor.active_process ?? target_process(pm)
 }
 
 export class FollowCursorService {

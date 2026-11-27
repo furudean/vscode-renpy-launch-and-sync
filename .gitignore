@@ -17,3 +17,4 @@ test/fixtures/project/**/*.rpyc
 test/fixtures/project/log.txt
 test/fixtures/project/traceback.txt
 test/fixtures/project/errors.txt
+test/fixtures/project/other/

@@ -348,7 +348,7 @@ suite("renpyWarp", function () {
 				await launch_game()
 			}
 
-			const process = api.pm.at(-1)
+			const process = api.pm.newest()
 			assert.ok(process, "game did not launch")
 
 			await wait_for(() => process.socket_ready, "the rpe to connect", {
@@ -603,7 +603,7 @@ suite("renpyWarp", function () {
 			await show_line(script, editor_line(7))
 			await vscode.commands.executeCommand("renpyWarp.warpToLine")
 
-			const process = api.pm.at(-1)
+			const process = api.pm.newest()
 			assert.ok(process, "game did not launch")
 
 			await wait_for(() => process.socket_ready, "the rpe to connect", {
@@ -714,7 +714,7 @@ suite("renpyWarp", function () {
 			assert.strictEqual(started, true, "debug session did not start")
 
 			assert.strictEqual(api.pm.length, 1)
-			const process = api.pm.at(0) as ManagedProcess
+			const process = api.pm.newest() as ManagedProcess
 			assert.strictEqual(vscode.debug.activeDebugSession?.type, "renpyWarp")
 
 			await vscode.debug.stopDebugging()
@@ -737,7 +737,7 @@ suite("renpyWarp", function () {
 			try {
 				await launch_game()
 
-				const process = api.pm.at(-1)
+				const process = api.pm.newest()
 				assert.ok(process, "game did not launch")
 				await wait_for(() => process.socket_ready, "the rpe to connect", {
 					process
@@ -768,6 +768,67 @@ suite("renpyWarp", function () {
 			}
 		})
 
+		test("warps the game running the file's project rather than the newest", async () => {
+			// a second project inside the workspace, so the socket server takes
+			// its game too
+			const other_root = path.join(project_root, "other")
+			await fs.mkdir(path.join(other_root, "game"), { recursive: true })
+			await fs.copyFile(script, path.join(other_root, "game", "script.rpy"))
+
+			await update_config({ renpyExtensionsEnabled: "Enabled" })
+
+			try {
+				await launch_game()
+				const own = api.pm.newest()
+				assert.ok(own, "this project's game did not launch")
+
+				// a name of its own, or vscode asks whether to run it twice
+				await launch_game({
+					name: "Launch other project",
+					project: other_root,
+					sdk: sdk_path
+				})
+				const other = api.pm.newest()
+				assert.ok(other && other !== own, "the other game did not launch")
+
+				for (const game of [own, other]) {
+					await wait_for(() => game.socket_ready, "the rpe to connect", {
+						process: game
+					})
+				}
+
+				await show_line(script, editor_line(7))
+				await vscode.commands.executeCommand("renpyWarp.warpToLine")
+
+				assert.strictEqual(api.pm.length, 2, "a third game was started")
+
+				// ren'py before 8.2 can land a dialogue warp on the statement
+				// after, so only check that this project's game left the start
+				const deadline = Date.now() + 10_000
+				while (true) {
+					const { text } = await own.console(`renpy.get_filename_line()[1]`)
+					if (Number(text) >= 7) break
+
+					if (Date.now() > deadline) {
+						throw new Error(
+							`this project's game never warped, still at line ${text}` +
+								log_tail(own)
+						)
+					}
+					await sleep(100)
+				}
+			} finally {
+				await api.pm.kill_all()
+				await wait_for(() => api.pm.length === 0, "the games to die")
+				await wait_for(
+					() => renpy_sessions().length === 0,
+					"the sessions to terminate"
+				)
+				await update_config({ renpyExtensionsEnabled: "Disabled" })
+				await fs.rm(other_root, { recursive: true, force: true })
+			}
+		})
+
 		test("sends process output to the debug console", async () => {
 			const output: string[] = []
 			const tracker = vscode.debug.registerDebugAdapterTrackerFactory(
@@ -792,7 +853,7 @@ suite("renpyWarp", function () {
 			try {
 				await launch_game()
 
-				const process = api.pm.at(-1)
+				const process = api.pm.newest()
 				assert.ok(process, "game did not launch")
 
 				// the console is the only place process output goes now, and it
@@ -825,7 +886,7 @@ suite("renpyWarp", function () {
 			try {
 				await launch_game()
 
-				const process = api.pm.at(-1)!
+				const process = api.pm.newest()!
 				await wait_for(() => process.socket_ready, "the rpe to connect", {
 					process
 				})
@@ -976,7 +1037,7 @@ suite("renpyWarp", function () {
 				})
 				assert.strictEqual(started, true, "debug session did not start")
 
-				const process = api.pm.at(-1)
+				const process = api.pm.newest()
 				assert.ok(process, "game did not launch")
 
 				await wait_for(() => process.socket_ready, "the rpe to connect", {
@@ -1157,7 +1218,7 @@ suite("renpyWarp", function () {
 					() => api.pm.length === 1,
 					"the process to be discovered"
 				)
-				const discovered = api.pm.at(0)!
+				const discovered = api.pm.newest()!
 				await wait_for(() => discovered.socket_ready, "the rpe to connect", {
 					process: discovered
 				})
@@ -1182,7 +1243,7 @@ suite("renpyWarp", function () {
 					() => api.pm.length === 1,
 					"the process to be discovered"
 				)
-				const discovered = api.pm.at(0)!
+				const discovered = api.pm.newest()!
 				assert.strictEqual(discovered.pid, launched.pid)
 				assert.notStrictEqual(discovered, launched)
 				assert.ok(
@@ -1225,7 +1286,7 @@ suite("renpyWarp", function () {
 					() => api.pm.length === 1,
 					"the process to be discovered"
 				)
-				const discovered = api.pm.at(0)!
+				const discovered = api.pm.newest()!
 
 				// fire a manual attach for the same pid right as the socket server
 				// starts its own automatic one, racing the two bind attempts
@@ -1280,7 +1341,7 @@ suite("renpyWarp", function () {
 					const warmup = await api.launch_unmanaged()
 					assert.ok(warmup, "process did not launch")
 					await wait_for(() => api.pm.length === 1, "the warmup to connect")
-					await api.pm.at(0)!.kill()
+					await api.pm.newest()!.kill()
 					await (warmup as ManagedProcess).wait_for_exit()
 					warmup.dispose()
 					await wait_for(
@@ -1309,7 +1370,7 @@ suite("renpyWarp", function () {
 
 				try {
 					await wait_for(() => api.pm.length === 1, "the game to be discovered")
-					const game = api.pm.at(0)!
+					const game = api.pm.newest()!
 					await wait_for(() => game.socket_ready, "the rpe to connect", {
 						process: game
 					})
@@ -1344,7 +1405,7 @@ suite("renpyWarp", function () {
 					() => api.pm.length === 1,
 					"the process to be discovered"
 				)
-				const discovered = api.pm.at(0)!
+				const discovered = api.pm.newest()!
 				await wait_for(() => discovered.socket_ready, "the rpe to connect", {
 					process: discovered
 				})

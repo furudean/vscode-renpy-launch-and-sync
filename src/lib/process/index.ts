@@ -391,3 +391,8 @@ export class ManagedProcess extends UnmanagedProcess {
 export type AnyProcess = ManagedProcess | UnmanagedProcess
 
 export { ProcessManager }
+export {
+	focused_process,
+	target_process,
+	active_target_process
+} from "./target"

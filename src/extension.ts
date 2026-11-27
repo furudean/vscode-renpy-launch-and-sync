@@ -1,7 +1,11 @@
 import * as vscode from "vscode"
 
 import { ProcessManager } from "./lib/process/manager"
-import { FollowCursorService, has_cursor_drifted } from "./lib/follow_cursor"
+import {
+	FollowCursorService,
+	has_cursor_drifted,
+	sync_target
+} from "./lib/follow_cursor"
 import { get_logger } from "./lib/log"
 import { get_config, init_config_cache } from "./lib/config"
 import { StatusBar } from "./lib/status_bar"
@@ -10,7 +14,11 @@ import { register_commands } from "./lib/commands"
 import { update_existing_rpes } from "./lib/rpe"
 import { register_handlers } from "./lib/handlers"
 import { DecorationService } from "./lib/decoration"
-import { AnyProcess } from "./lib/process"
+import {
+	AnyProcess,
+	active_target_process,
+	focused_process
+} from "./lib/process"
 import type { RenpyDebugConfigurationProvider } from "./lib/debug"
 import {
 	download_sdk,
@@ -92,7 +100,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 	}
 
 	function refresh_cursor_drift() {
-		if (!has_cursor_drifted(pm.at(-1))) {
+		if (!has_cursor_drifted(sync_target(pm, follow_cursor))) {
 			clearTimeout(cursor_drift_timeout)
 			cursor_drift_timeout = undefined
 			set_cursor_drifted(false)
@@ -113,7 +121,7 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 
 		cursor_drift_timeout = setTimeout(() => {
 			cursor_drift_timeout = undefined
-			set_cursor_drifted(has_cursor_drifted(pm.at(-1)))
+			set_cursor_drifted(has_cursor_drifted(sync_target(pm, follow_cursor)))
 		}, 200)
 	}
 
@@ -129,26 +137,35 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		})
 	)
 
+	async function follow(rpp: AnyProcess | undefined) {
+		if (
+			!follow_cursor.enabled ||
+			get_config("renpyExtensionsEnabled") !== "Enabled" ||
+			!rpp ||
+			rpp === follow_cursor.active_process
+		) {
+			return
+		}
+
+		await follow_cursor.set(rpp)
+
+		if (pm.length > 1) {
+			status_bar.notify(`$(debug-line-by-line) Now following pid ${rpp.pid}`)
+		}
+	}
+
 	let pm_init = false
-	pm.on("exit", () => {
+	pm.on("exit", (rpp: AnyProcess) => {
 		sync_process_count()
 		refresh_cursor_drift()
 
 		if (pm.length === 0) {
 			pm_init = false
 		}
-		if (
-			follow_cursor.enabled &&
-			get_config("renpyExtensionsEnabled") === "Enabled"
-		) {
-			const most_recent = pm.at(-1)
 
-			if (most_recent) {
-				follow_cursor.set(most_recent)
-				status_bar.notify(
-					`$(debug-line-by-line) Now following pid ${most_recent.pid}`
-				)
-			}
+		// listener order decides whether the followed game has let go yet
+		if (!follow_cursor.active_process || follow_cursor.active_process === rpp) {
+			follow(active_target_process(pm)).catch((error) => logger.error(error))
 		}
 	})
 	pm.on("attach", async (rpp: AnyProcess) => {
@@ -160,21 +177,28 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		refresh_cursor_drift()
 
 		if (
-			(get_config("renpyExtensionsEnabled") === "Enabled" &&
-				get_config("followCursorOnLaunch") &&
-				!pm_init) ||
-			follow_cursor.enabled // follow cursor is already active, replace it
+			get_config("renpyExtensionsEnabled") === "Enabled" &&
+			get_config("followCursorOnLaunch") &&
+			!pm_init
 		) {
 			logger.info("enabling follow cursor for new process")
 			await follow_cursor.set(rpp)
-
-			if (pm.length > 1) {
-				status_bar.notify(`$(debug-line-by-line) Now following pid ${rpp.pid}`)
-			}
+		} else {
+			// a new game is only followed once its session is the selected one
+			await follow(active_target_process(pm))
 		}
 
 		pm_init = true
 	})
+
+	// selecting another kind of session leaves following where it was
+	context.subscriptions.push(
+		vscode.debug.onDidChangeActiveDebugSession(() => {
+			follow(focused_process(pm))
+				.catch((error) => logger.error(error))
+				.finally(refresh_cursor_drift)
+		})
+	)
 
 	register_commands(context, pm, status_bar, follow_cursor, wss)
 	const debug_provider = register_debugger(context, pm, status_bar, wss)
