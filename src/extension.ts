@@ -1,7 +1,7 @@
 import * as vscode from "vscode"
 
 import { ProcessManager } from "./lib/process/manager"
-import { FollowCursorService } from "./lib/follow_cursor"
+import { FollowCursorService, has_cursor_drifted } from "./lib/follow_cursor"
 import { get_logger } from "./lib/log"
 import { get_config, init_config_cache } from "./lib/config"
 import { StatusBar } from "./lib/status_bar"
@@ -80,9 +80,58 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		version_annotations.refresh()
 	}
 
+	let cursor_drifted = false
+	let cursor_drift_timeout: NodeJS.Timeout | undefined
+
+	function set_cursor_drifted(drifted: boolean) {
+		if (drifted === cursor_drifted) return
+
+		cursor_drifted = drifted
+		status_bar.update(() => ({ is_cursor_drifted: drifted }))
+	}
+
+	function refresh_cursor_drift() {
+		if (!has_cursor_drifted(pm.at(-1))) {
+			clearTimeout(cursor_drift_timeout)
+			cursor_drift_timeout = undefined
+			set_cursor_drifted(false)
+			return
+		}
+
+		// already shown, or already waiting to be. restarting the wait on
+		// every scroll would hold it off until the scrolling stops
+		if (cursor_drifted || cursor_drift_timeout) return
+
+		// the editor and ren'py fall out of step for a moment whenever follow
+		// cursor has one catch up to the other, so only count drift that
+		// outlasts that
+		if (!follow_cursor.active_process) {
+			set_cursor_drifted(true)
+			return
+		}
+
+		cursor_drift_timeout = setTimeout(() => {
+			cursor_drift_timeout = undefined
+			set_cursor_drifted(has_cursor_drifted(pm.at(-1)))
+		}, 200)
+	}
+
+	context.subscriptions.push(
+		{ dispose: () => clearTimeout(cursor_drift_timeout) },
+		vscode.window.onDidChangeTextEditorSelection(refresh_cursor_drift),
+		vscode.window.onDidChangeActiveTextEditor(refresh_cursor_drift),
+		vscode.window.onDidChangeTextEditorVisibleRanges(refresh_cursor_drift),
+		vscode.workspace.onDidChangeConfiguration((e) => {
+			if (e.affectsConfiguration("renpyWarp.followCursorBehavior")) {
+				refresh_cursor_drift()
+			}
+		})
+	)
+
 	let pm_init = false
 	pm.on("exit", () => {
 		sync_process_count()
+		refresh_cursor_drift()
 
 		if (pm.length === 0) {
 			pm_init = false
@@ -105,6 +154,9 @@ export function activate(context: vscode.ExtensionContext): ExtensionApi {
 		sync_process_count()
 
 		ds.track(rpp)
+
+		rpp.on("cursorChange", refresh_cursor_drift)
+		refresh_cursor_drift()
 
 		if (
 			(get_config("renpyExtensionsEnabled") === "Enabled" &&

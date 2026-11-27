@@ -78,6 +78,7 @@ export class UnmanagedProcess {
 			if (message.type === "current_line" && !this.is_late(message)) {
 				this.last_cursor = message
 				this.warp_pending = false
+				this.emit("cursorChange")
 			}
 			if (message.type === "current_label") {
 				if (!is_system_label(message.label)) {

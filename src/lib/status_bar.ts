@@ -26,6 +26,7 @@ export class StatusBar {
 	private context: vscode.ExtensionContext
 	private sdk_bar: vscode.StatusBarItem
 	private instance_bar: vscode.StatusBarItem
+	private sync_cursor_bar: vscode.StatusBarItem
 	private follow_cursor_bar: vscode.StatusBarItem
 	private direction_bar: vscode.StatusBarItem
 	private notification_bar: vscode.StatusBarItem
@@ -40,6 +41,7 @@ export class StatusBar {
 		is_follow_cursor: false,
 		follow_cursor_direction: "game_to_script" as FollowCursorDirection,
 		is_follow_cursor_flashing: false,
+		is_cursor_drifted: false,
 		message: undefined as string | undefined,
 		message_level: undefined as number | undefined
 	}
@@ -52,6 +54,11 @@ export class StatusBar {
 		this.context = context
 
 		this.instance_bar = vscode.window.createStatusBarItem(
+			vscode.StatusBarAlignment.Left,
+			0
+		)
+
+		this.sync_cursor_bar = vscode.window.createStatusBarItem(
 			vscode.StatusBarAlignment.Left,
 			0
 		)
@@ -109,6 +116,7 @@ export class StatusBar {
 
 		this.subscriptions.push(
 			this.instance_bar,
+			this.sync_cursor_bar,
 			this.follow_cursor_bar,
 			this.direction_bar,
 			this.notification_bar,
@@ -189,6 +197,16 @@ export class StatusBar {
 
 		const can_follow =
 			installed && this.state.running_processes > 0 && extensions_enabled
+
+		if (can_follow && this.state.is_cursor_drifted) {
+			this.sync_cursor_bar.show()
+		} else {
+			this.sync_cursor_bar.hide()
+		}
+
+		this.sync_cursor_bar.text = "$(redo) Show Ren'Py"
+		this.sync_cursor_bar.command = "renpyWarp.syncCursorPosition"
+		this.sync_cursor_bar.tooltip = "Show the line where Ren'Py currently is"
 
 		if (can_follow || this.state.is_follow_cursor_flashing) {
 			this.follow_cursor_bar.show()

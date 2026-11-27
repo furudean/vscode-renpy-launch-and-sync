@@ -5,6 +5,9 @@ All notable changes to this project will be documented in this file.
 ## Unreleased
 
 - Minimum supported Visual Studio Code version is now 1.119.0.
+- Added a _Show Ren'Py_ button to the status bar,
+  which runs `renpyWarp.syncCursorPosition`. It shows when the editor
+  has drifted away from Ren'Py's current line.
 
 ## 5.1.0 - 2026-11-10
 

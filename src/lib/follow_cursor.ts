@@ -87,20 +87,23 @@ function locate_renpy(
 	return position
 }
 
+function reveal_range(
+	document: vscode.TextDocument,
+	line: number,
+	dialogue: DialogueRange | undefined
+): vscode.Range {
+	return dialogue
+		? dialogue_range(dialogue)
+		: document.lineAt(Math.min(line, document.lineCount - 1)).range
+}
+
 function reveal_dialogue(
 	editor: vscode.TextEditor,
 	line: number,
 	dialogue: DialogueRange | undefined
 ): void {
-	// ren'py below 8.6 reports a monologue block on its `"""` line, so the
-	// dialogue can be further down the file than the line it came with
-	const range = dialogue
-		? dialogue_range(dialogue)
-		: editor.document.lineAt(Math.min(line, editor.document.lineCount - 1))
-				.range
-
 	editor.revealRange(
-		range,
+		reveal_range(editor.document, line, dialogue),
 		vscode.TextEditorRevealType.InCenterIfOutsideViewport
 	)
 }
@@ -192,6 +195,41 @@ function is_at_renpy_cursor(
 		statement ===
 			warp_target(get_statements(document), editor.selection.active.line)
 	)
+}
+
+export function has_cursor_drifted(
+	rp: AnyProcess | undefined,
+	editor = vscode.window.activeTextEditor
+): boolean {
+	// nothing to sync to yet, or the report is stale
+	if (!rp?.last_cursor || rp.warp_pending) return false
+
+	const last_cursor = rp.last_cursor
+
+	// syncing would open the file ren'py is in
+	if (
+		!editor ||
+		path.normalize(editor.document.uri.fsPath) !==
+			path.normalize(last_cursor.path)
+	) {
+		return true
+	}
+
+	// syncing would only scroll, so the caret doesn't matter, only whether
+	// ren'py's line is on screen
+	if (get_config("followCursorBehavior") === "Just reveal") {
+		const { line, dialogue } = locate_renpy(
+			editor.document,
+			last_cursor.line - 1,
+			last_cursor.what,
+			said_range(last_cursor)
+		)
+		const range = reveal_range(editor.document, line, dialogue)
+
+		return !editor.visibleRanges.some((visible) => visible.contains(range))
+	}
+
+	return !is_at_renpy_cursor(rp, editor)
 }
 
 function reveal_renpy_cursor(rp: AnyProcess, editor: vscode.TextEditor): void {
