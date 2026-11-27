@@ -6,19 +6,28 @@ import { Readable } from "node:stream"
 import { join } from "node:path"
 import { tmpdir } from "node:os"
 
-// the e2e tests open this project as their workspace
 const workspace = join(import.meta.dirname, "test", "fixtures", "project")
 
-// the sdk the game tests run against. the archive is fetched once into the
-// cache below, and the tests serve it to the extension from localhost so the
-// extension's own download path runs on every run without touching renpy.org.
-// RENPY_SDK_VERSION picks another sdk, defaulting to the oldest supported one
 const SDK_VERSION = process.env.RENPY_SDK_VERSION ?? "8.1.0"
 const sdk_cache = join(
 	import.meta.dirname,
 	".vscode-test",
 	"cache",
 	SDK_VERSION
+)
+
+const user_data_dir = join(
+	process.env.RUNNER_TEMP ?? tmpdir(),
+	"renpy-warp-user-data"
+)
+
+const installed_sdk = join(
+	user_data_dir,
+	"User",
+	"globalStorage",
+	"paisleysoftworks.renpywarp",
+	"sdks",
+	`renpy-${SDK_VERSION}-sdk`
 )
 
 async function fetch_to(url, file) {
@@ -44,11 +53,18 @@ async function ensure_sdk_archive() {
 	const base = `https://renpy.org/dl/${SDK_VERSION}/`
 
 	try {
+		await access(join(installed_sdk, "renpy.py"))
+		return
+	} catch {
+		// not unpacked
+	}
+
+	try {
 		await access(archive)
 		await access(checksums)
 		return
 	} catch {
-		// not cached yet
+		// not cached
 	}
 
 	mkdirSync(sdk_cache, { recursive: true })
@@ -59,10 +75,6 @@ async function ensure_sdk_archive() {
 
 await ensure_sdk_archive()
 
-const user_data_dir = join(
-	process.env.RUNNER_TEMP ?? tmpdir(),
-	"renpy-warp-user-data"
-)
 mkdirSync(join(user_data_dir, "User"), { recursive: true })
 writeFileSync(
 	join(user_data_dir, "User", "settings.json"),
@@ -92,6 +104,7 @@ writeFileSync(
 
 export default defineConfig({
 	files: "out/**/*.e2e.test.js",
+	version: process.env.VSCODE_VERSION || "stable",
 	workspaceFolder: workspace,
 	env: {
 		RENPY_SDK_VERSION: SDK_VERSION,
